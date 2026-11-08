@@ -5,6 +5,7 @@ export function createAuthorizers({
   publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
   fetchImpl = fetch,
   resolveTenant,
+  requireOrganizationSlug = false,
 } = {}) {
   if (publishableKey && !/^sb_publishable_[A-Za-z0-9_-]+$/.test(publishableKey)) {
     throw new Error('SUPABASE_PUBLISHABLE_KEY must be a Supabase publishable key.')
@@ -52,6 +53,9 @@ export function createAuthorizers({
   async function requireTenant(request, reply) {
     await requireIdentity(request, reply)
     if (reply.sent) return
+    if (requireOrganizationSlug && !request.organizationSlug) {
+      return reply.code(400).send({ message: 'Open an organization workspace before accessing its documents.' })
+    }
     const id = request.headers['x-tenant-id']
     if (typeof id !== 'string' || !uuidPattern.test(id)) {
       return reply.code(400).send({ message: 'Select a tenant before accessing workspace documents.' })

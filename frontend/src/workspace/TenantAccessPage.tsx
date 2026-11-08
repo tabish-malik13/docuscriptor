@@ -25,12 +25,12 @@ export function TenantAccessPage() {
     setMembers(people.items); setInvitations(pending.items); setAudit(events.items); setLegacy(personal)
   }, [api])
   useEffect(() => {
-    void load().catch((cause) => setError(cause instanceof Error ? cause.message : 'Tenant settings could not be loaded.')).finally(() => setLoading(false))
+    void load().catch((cause) => setError(cause instanceof Error ? cause.message : 'Organization settings could not be loaded.')).finally(() => setLoading(false))
   }, [load])
   async function run(work: () => Promise<void>) {
     if (busy) return
     setBusy(true); setError(''); setNotice('')
-    try { await work(); await load() } catch (cause) { setError(cause instanceof Error ? cause.message : 'Tenant change failed.') }
+    try { await work(); await load() } catch (cause) { setError(cause instanceof Error ? cause.message : 'Organization change failed.') }
     finally { setBusy(false); onChange() }
   }
   function invite(event: FormEvent<HTMLFormElement>) {
@@ -49,7 +49,7 @@ export function TenantAccessPage() {
   return <div className="tenant-settings">
     {error && <p className="error-box" role="alert">{error} <button className="button secondary" onClick={() => { void run(async () => {}) }}>Retry</button></p>}
     {notice && <p className="success-box" role="status">{notice}</p>}
-    {loading && <p role="status">Loading tenant administration…</p>}
+    {loading && <p role="status">Loading organization settings…</p>}
     <form className="panel workflow-form" onSubmit={rename}>
       <fieldset disabled={busy || loading}><label className="field">Organization name<input name="name" key={tenant.name} defaultValue={tenant.name} required maxLength={120} /></label><button className="button secondary">Save name</button></fieldset>
     </form>
@@ -82,7 +82,7 @@ export function TenantAccessPage() {
       <button className="button secondary" disabled={busy} onClick={() => { void run(async () => { await api('/api/tenant/invitations/' + invitation.id, { method: 'DELETE' }) }) }}>Revoke</button>
     </div>) : <p className="form-note">No pending invitations.</p>}</section>
     {tenant.role === 'owner' && legacy.jobs + legacy.templates > 0 && <section className="panel workflow-form"><h2>Import your prior personal records</h2>
-      <p className="form-note">You have {legacy.jobs} personal jobs and {legacy.templates} personal templates from before tenant support. Importing them shares their contents with all members of {tenant.name}.</p>
+      <p className="form-note">You have {legacy.jobs} personal jobs and {legacy.templates} personal templates from before organizations were introduced. Importing them shares their contents with all members of {tenant.name}.</p>
       <button className="button secondary" disabled={busy} onClick={() => {
         if (window.confirm('Share all your prior personal documents and templates with every member of ' + tenant.name + '?')) void run(async () => {
           await api('/api/tenant/import-personal', { method: 'POST', body: JSON.stringify({ shareWithTenant: true }) }); setNotice('Your personal records were imported into this organization.')

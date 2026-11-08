@@ -18,12 +18,12 @@ test('tenant selection and membership are mandatory; account discovery needs onl
   assert.equal((await f.gateway.inject({ url: '/api/jobs', headers })).statusCode, 400)
   assert.equal((await f.gateway.inject({ url: '/api/jobs', headers: { ...headers, 'x-tenant-id': 'invalid' } })).statusCode, 400)
   assert.equal((await f.gateway.inject({ url: '/api/jobs', headers: { ...headers, 'x-tenant-id': randomUUID() } })).statusCode, 403)
-  const result = await f.gateway.inject({ url: '/api/tenants', headers })
+  const result = await f.gateway.inject({ url: '/api/organizations', headers })
   assert.equal(result.statusCode, 200)
   assert.deepEqual(result.json().items.map((tenant) => tenant.id), [person.tenantId])
   assert.equal((await f.gateway.inject({ url: '/api/invitations', headers })).statusCode, 200)
   person.user.email_confirmed_at = null
-  assert.equal((await f.gateway.inject({ url: '/api/tenants', headers })).statusCode, 403)
+  assert.equal((await f.gateway.inject({ url: '/api/organizations', headers })).statusCode, 403)
 })
 
 test('members share tenant artifacts and templates; viewers cannot delete and operators only delete their own', async (t) => {
@@ -96,11 +96,11 @@ test('membership outages fail closed; global and user metadata cannot grant a te
 
 test('an authenticated user can create a named tenant without granting themselves access to others', async (t) => {
   const f = await fixture(t), person = f.principal()
-  const response = await f.gateway.inject({ method: 'POST', url: '/api/tenants', headers: person.headers, payload: { name: 'User requested tenant' } })
+  const response = await f.gateway.inject({ method: 'POST', url: '/api/organizations', headers: person.headers, payload: { name: 'User requested organization', slug: 'requested-organization' } })
   assert.equal(response.statusCode, 201)
   assert.equal(response.json().role, 'owner')
   assert.notEqual(response.json().id, person.tenantId)
-  const forbidden = await f.gateway.inject({ method: 'POST', url: '/api/tenants', headers: person.headers, payload: { name: 'Denied', owner: randomUUID() } })
+  const forbidden = await f.gateway.inject({ method: 'POST', url: '/api/organizations', headers: person.headers, payload: { name: 'Denied', owner: randomUUID() } })
   assert.equal(forbidden.statusCode, 400)
 })
 

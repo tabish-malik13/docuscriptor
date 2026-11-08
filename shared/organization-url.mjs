@@ -3,21 +3,29 @@ export const organizationSlugPattern = '^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$'
 export function validOrganizationSlug(slug) {
   return typeof slug === 'string' && new RegExp(organizationSlugPattern).test(slug) && !reservedSlugs.has(slug)
 }
-export function organizationConfig(appOrigin, baseDomain) {
+export function organizationConfig(appOrigin, baseDomain, routing = 'subdomain') {
   const url = new URL(appOrigin)
   const domain = baseDomain.toLowerCase()
   if (!['http:','https:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/' || url.search || url.hash ||
+    !['path','subdomain'].includes(routing) ||
     !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9-]+$/.test(domain)) throw new Error('Configure a valid application origin and organization base domain.')
   if (url.protocol === 'http:' && (!['127.0.0.1','localhost','[::1]'].includes(url.hostname) && !url.hostname.endsWith('.localhost') || !domain.endsWith('.localhost'))) {
     throw new Error('Organization workspaces require HTTPS outside localhost.')
   }
-  return { appOrigin: url.origin, baseDomain: domain }
+  return { appOrigin: url.origin, baseDomain: domain, routing }
 }
 export function organizationUrl(slug, config) {
   if (!validOrganizationSlug(slug)) throw new Error('Choose a workspace address with 3–40 lowercase letters, numbers, or hyphens.')
   const url = new URL(config.appOrigin)
+  if (config.routing === 'path') return url.origin + '/org/' + slug
   url.hostname = slug + '.' + config.baseDomain
   return url.origin + '/'
+}
+export function organizationSlugFromPath(pathname) {
+  if (pathname !== '/org' && !pathname.startsWith('/org/')) return null
+  const match = /^\/org\/([a-z0-9-]+)\/?$/.exec(pathname)
+  if (!match || !validOrganizationSlug(match[1])) throw new Error('This organization workspace address is invalid.')
+  return match[1]
 }
 export function organizationSlugFromHost(host, config) {
   const hostname = new URL('http://' + host).hostname.toLowerCase()

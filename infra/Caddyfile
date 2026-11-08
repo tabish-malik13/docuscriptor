@@ -9,7 +9,8 @@
   handle /api/* {
     reverse_proxy gateway:4000
   }
-  handle /editor.html {
+  @editor path /editor.html /editor
+  handle @editor {
     header Content-Security-Policy "default-src 'self'; connect-src 'self' data: blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
     root * /srv
     file_server
@@ -17,6 +18,8 @@
   handle {
     header Content-Security-Policy "default-src 'self'; connect-src 'self' {$SUPABASE_PUBLIC_URL}; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
     root * /srv
+    @organization path /org /org/*
+    rewrite @organization /index.html
     file_server
   }
 }

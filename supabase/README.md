@@ -2,7 +2,11 @@
 
 The application supports hosted or separately self-hosted Supabase. The selected hosted project is [DocuScripter](https://supabase.com/dashboard/project/ttyrtwackxzyhtbvuhmf) in Mumbai (`ap-south-1`), project reference `ttyrtwackxzyhtbvuhmf`. The local ignored `.env` contains its public URL and publishable key; no service-role/secret key is required by the app.
 
-## Install the tenant authority
+## Installed organization authority
+
+The hosted project has migration `20261108184608_organization_workspaces` applied. Its reviewed source is in `migrations/20261108184608_organization_workspaces.sql` and `tenant-access.sql`. Do not run this initial schema again on that project. These installation instructions are for a fresh hosted or self-hosted project.
+
+## Install on another project
 
 1. Open the project's [SQL editor](https://supabase.com/dashboard/project/ttyrtwackxzyhtbvuhmf/sql/new).
 2. Run the complete contents of [`tenant-access.sql`](tenant-access.sql) **once** as an administrator. It creates the tenant tables, indexes, RLS policies and RPCs without inserting accounts, tenants, memberships, invitations, or documents. For managed deployments, apply it as a tracked migration with your normal Supabase migration workflow.
@@ -17,9 +21,9 @@ In [Auth URL configuration](https://supabase.com/dashboard/project/ttyrtwackxzyh
 
 Enable email/password authentication and email confirmation in the [email provider settings](https://supabase.com/dashboard/project/ttyrtwackxzyhtbvuhmf/auth/providers). Disable anonymous sign-ins. The app offers account registration followed by email verification, then sign-in. If your deployment is invitation-only, disable new sign-ups in Supabase and provision real accounts through its administrator interface instead. No account is provisioned or fabricated by the setup code.
 
-The first real user signs up, verifies their own email, signs in and creates a named tenant in the app. That operation atomically creates the tenant and its first owner. There is no seeded tenant, global administrator, metadata-based role assignment or automatic personal-data sharing.
+The first real user signs up, verifies their own email, signs in and creates a named organization with a unique workspace address in the app. That operation atomically creates the tenant and its first owner. There is no seeded tenant, global administrator, metadata-based role assignment or automatic personal-data sharing.
 
-Tenant administrators create invitations in **Tenant administration**. Invitations are addressed to an email, expire after seven days, and require that exact verified email to accept. The app does not send invitation messages; ask the recipient to sign in or register using that email and accept the pending invitation. Registration confirmation messages are handled by Supabase Auth.
+Organization administrators create invitations in **Organization settings**. Invitations are addressed to an email, expire after seven days, and require that exact verified email to accept. The app does not send invitation messages; ask the recipient to sign in or register using that email and accept the pending invitation. Registration confirmation messages are handled by Supabase Auth.
 
 ## Access model
 
@@ -41,3 +45,9 @@ On first startup, the local database upgrades to version 2. Existing rows retain
 `tests/bootstrap.sql` creates a minimal Auth contract and test roles for an **empty, disposable PostgreSQL database only**. Never run that bootstrap in your hosted project. GitHub Actions starts its preinstalled PostgreSQL 16 service and pipes bootstrap, schema, and `tests/tenant-access.test.sql` into a fresh database. The tests exercise actual RLS and RPC permissions, invitations, tenant isolation, ownership changes, role escalation attempts and last-owner protection. Fixtures and SQL test helpers are rolled back.
 
 The regular Node tests use isolated identity/tenant doubles and temporary SQLite files. They cover the real gateway and processing services, including tenant sharing, member removal during processing, independent roles in multiple tenants, content deletion permissions, and safe legacy migration.
+
+## Production domain
+
+The selected base domain is `docuscriptor.com`. Configure wildcard DNS, HTTPS ingress, and the public origin/domain build settings as described in the root README before using public workspace URLs. Local development uses `docuscriptor.localhost` workspace subdomains and needs no public DNS changes.
+
+The hosted security advisor reports that [leaked-password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) is disabled. This is a provider setting; no paid feature is required by DocuScripter.

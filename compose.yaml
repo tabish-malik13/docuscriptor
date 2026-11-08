@@ -9,6 +9,9 @@ services:
       args:
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
         VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:-}
+        VITE_APP_ORIGIN: ${PUBLIC_APP_ORIGIN:-http://localhost:4173}
+        VITE_ORGANIZATION_BASE_DOMAIN: ${PUBLIC_ORGANIZATION_BASE_DOMAIN:-docuscriptor.localhost}
+        VITE_ORGANIZATION_ROUTING: ${PUBLIC_ORGANIZATION_ROUTING:-subdomain}
     environment:
       SUPABASE_PUBLIC_URL: ${VITE_SUPABASE_URL:-}
     ports:
@@ -32,6 +35,9 @@ services:
       DOCX_SERVICE_SECRET: ${DOCX_SERVICE_SECRET:?Set DOCX_SERVICE_SECRET in .env}
       PDF_SERVICE_SECRET: ${PDF_SERVICE_SECRET:?Set PDF_SERVICE_SECRET in .env}
       DATA_PATH: /app/data/workspace.sqlite
+      APP_ORIGIN: ${PUBLIC_APP_ORIGIN:-http://localhost:4173}
+      ORGANIZATION_BASE_DOMAIN: ${PUBLIC_ORGANIZATION_BASE_DOMAIN:-docuscriptor.localhost}
+      ORGANIZATION_ROUTING: ${PUBLIC_ORGANIZATION_ROUTING:-subdomain}
     volumes:
       - workspace-data:/app/data
     read_only: true

@@ -44,7 +44,7 @@ export function SignInPage({ loading, unavailable, onSignIn }: {
       <div className="login-area">
         <section className="login-card"><span className="icon-chip violet"><ShieldCheck size={22} /></span>
           <h2>{loading ? 'Checking your session' : authConfigured ? creating ? 'Create your account' : 'Sign in to your workspace' : 'Connect Supabase Auth'}</h2>
-          <p>{loading ? 'Connecting to your identity provider.' : authConfigured ? 'Sign in with a verified account to create a tenant or accept an invitation.' : 'Set the Supabase project URL and publishable key to enable workspace sign-in.'}</p>
+          <p>{loading ? 'Connecting to your identity provider.' : authConfigured ? 'Sign in with a verified account to create an organization or accept an invitation.' : 'Set the Supabase project URL and publishable key to enable workspace sign-in.'}</p>
           {unavailable && <p className="error-box" role="alert">Your session could not be verified. Sign in again to continue.</p>}
           {notice && <p role="status" className="success-box">{notice}</p>}
           {error && <p className="error-box" role="alert">{error}</p>}

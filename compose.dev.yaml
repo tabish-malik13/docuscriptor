@@ -1,0 +1,8 @@
+# Native development uses a separate Compose project and loopback-only renderer.
+services:
+  renderer:
+    networks: !override [native-rendering]
+    ports:
+      - "127.0.0.1:3000:3000"
+networks:
+  native-rendering: {}

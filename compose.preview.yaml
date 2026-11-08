@@ -1,0 +1,10 @@
+# Run with compose.yaml; the gateway uses path-selected organizations.
+# Supply PUBLIC_APP_ORIGIN=https://<actual-project>.pages.dev in the shell.
+services:
+  web:
+    build:
+      args:
+        VITE_ORGANIZATION_ROUTING: path
+  gateway:
+    environment:
+      ORGANIZATION_ROUTING: path

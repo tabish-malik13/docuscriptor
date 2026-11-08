@@ -26,24 +26,25 @@ export async function fixture(t, options = {}) {
     const token = randomBytes(32).toString('hex')
     const user = { id: randomUUID(), aud: 'authenticated', email: randomUUID() + '@test.invalid', email_confirmed_at: new Date().toISOString(), app_metadata: {} }
     subjects.set(token, user)
-    tenants.set(tenantId, { id: tenantId, name: 'Isolated test tenant' })
+    tenants.set(tenantId, { id: tenantId, name: 'Isolated test organization', slug: 'org-' + tenantId })
     const person = { user, token, tenantId, headers: { authorization: 'Bearer ' + token, 'x-tenant-id': tenantId } }
     setRole(person, role)
     return person
   }
   const tenantAuthority = {
-    async membership(token, tenantId, subject) {
+    async membership(token, tenantId, subject, slug) {
       if (options.membershipFailure) throw problem(503, 'Tenant permissions are temporarily unavailable.')
+      if (slug && tenants.get(tenantId)?.slug !== slug) return null
       return subjects.get(token)?.id === subject ? memberships.get(tenantId + ':' + subject) || null : null
     },
     async list(token, subject) {
       return [...tenants.values()].filter((tenant) => memberships.has(tenant.id + ':' + subject))
         .map((tenant) => ({ ...tenant, role: memberships.get(tenant.id + ':' + subject) }))
     },
-    async create(token, name) {
+    async create(token, name, slug) {
       const user = subjects.get(token), id = randomUUID()
-      tenants.set(id, { id, name }); memberships.set(id + ':' + user.id, 'owner')
-      return { id, name, role: 'owner' }
+      tenants.set(id, { id, name, slug }); memberships.set(id + ':' + user.id, 'owner')
+      return { id, name, slug, role: 'owner' }
     },
     async members(token, tenantId) {
       return [...subjects.values()].filter((user) => memberships.has(tenantId + ':' + user.id))
@@ -85,11 +86,12 @@ export async function fixture(t, options = {}) {
     if (options.onServiceResult) await options.onServiceResult()
     return new Response(result.rawPayload, { status: result.statusCode, headers: result.headers })
   }
-  const gatewayOptions = { storePath: join(dir, 'workspace.sqlite'), docxService: 'http://docx.invalid', pdfService: 'http://pdf.invalid', docxSecret, pdfSecret, authOptions, tenantAuthority, fetchImpl, logger: false }
+  const gatewayOptions = { storePath: join(dir, 'workspace.sqlite'), docxService: 'http://docx.invalid', pdfService: 'http://pdf.invalid', docxSecret, pdfSecret, authOptions, tenantAuthority, fetchImpl, logger: false, ...(options.organizationOptions ? { organizationOptions: options.organizationOptions } : {}) }
   let gateway = await buildGatewayApp(gatewayOptions)
   t.after(async () => { await gateway.close(); await docx.close(); await pdf.close() })
   return {
     get gateway() { return gateway }, docx, pdf, docxSecret, pdfSecret, principal, setRole,
+    organizationSlug: (id) => tenants.get(id)?.slug,
     get authCalls() { return authCalls }, get rendererCalls() { return rendererCalls },
     async restart() { await gateway.close(); gateway = await buildGatewayApp(gatewayOptions) },
     dir,

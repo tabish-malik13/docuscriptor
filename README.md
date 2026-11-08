@@ -8,7 +8,7 @@ Use Node.js 24 or later:
 
 ```sh
 npm ci
-npm run dev
+npm run dev:web
 ```
 
 Open [the DOCX editor](http://127.0.0.1:5173/editor.html) to create a blank Word document, open a DOCX up to 4 MB, edit it, and download the result. The local editor needs no account and keeps its document in browser memory. Download edits before leaving; it does not save to the server.
@@ -29,7 +29,23 @@ Open [the workspace](http://localhost:4173/), sign in with a verified account, t
 
 For Supabase on the same Docker host, optionally set `SUPABASE_GATEWAY_URL` to a container-reachable origin, such as `http://host.docker.internal:54321` on Docker Desktop, while keeping `VITE_SUPABASE_URL` browser-reachable. No demo records, users, or documents are seeded.
 
+For native development, run `npm run dev` after configuring `.env`. It starts the gateway, DOCX service, PDF adapter, and Vite together, and reuses any of these services already running. If Docker is available, it starts an authenticated loopback-only PDF renderer in the separate `docuscripter-native` Compose project. Without Docker, sign-in, organization management, the local editor, and Word generation still work; PDF conversion needs the renderer. Use `npm run dev:web` only when deliberately running the API separately.
+
 For frontend development against the running Compose stack, set `DEV_GATEWAY_URL=http://127.0.0.1:4173` in `.env`, then run `npm run dev`. Without that override, Vite proxies to a native gateway on port 4000. Native service commands are `npm run start:gateway`, `npm run start:docx`, and `npm run start:pdf`; all load the root `.env`. A native PDF adapter also needs `GOTENBERG_URL` and an authenticated Gotenberg renderer.
+
+## Free hosted preview
+
+For a free `pages.dev` frontend with `/org/<slug>` workspaces and a temporary backend running on your computer, follow [the deployment guide](docs/deployment.md). The frontend API proxy needs a live backend tunnel; it does not run the DOCX/PDF engines itself. No domain ownership is required.
+
+## Organization workspace addresses
+
+The account page lists **Your organizations**. Create an organization with its name and a unique workspace address, then open its workspace. The internal tenant model is not exposed as a user-facing control. Workspace settings manage members, roles and invitations.
+
+Native development uses `http://<organization>.docuscriptor.localhost:5173/`, with central sign-in at `http://127.0.0.1:5173/`. The `.localhost` suffix resolves to loopback in supported browsers. Production is configured for `https://<organization>.docuscriptor.com/` by setting `PUBLIC_APP_ORIGIN=https://docuscriptor.com` and `PUBLIC_ORGANIZATION_BASE_DOMAIN=docuscriptor.com` before building the Compose images. The organization address is stable when its display name changes. Subdomain requests are checked against both membership and the organization selected by their host.
+
+The central account page transfers sign-in using a single-use, 60-second ticket protected by a browser-held proof verifier. Access and refresh tokens are never placed in URLs. Different workspace origins keep separate browser authentication state. A gateway restart invalidates pending tickets; retrying from the organization directory starts a new handoff.
+
+To make public addresses live, point `docuscriptor.com` and `*.docuscriptor.com` to your application ingress and terminate HTTPS with certificates covering both. Forward the original `Host` header and `/api/*` to the same app deployment. The supplied Caddy container serves port 4173 behind that ingress; it does not provision external DNS or wildcard certificates. Set Supabase Auth's Site URL and allowed confirmation redirects to the central production origin. No DNS provider or production host is configured by this repository.
 
 ## Document workflows
 
@@ -57,7 +73,7 @@ Tenant switching remounts the workspace and clears loaded data and processing fo
 
 After verifying a user's tenant processing permission, the gateway sends a service-specific HMAC assertion with the user ID, tenant ID, expiry, nonce, method, route, and payload hash. Processing services reject unsigned requests, tampering, expired assertions, wrong audiences and replay. Keys remain server-only. The renderer additionally requires Basic authentication. Private processing networks and renderer egress restrictions remain enforced by Compose. For services on separate hosts, use private TLS connections and manage the three secrets in your deployment secret store.
 
-Tenant owners and admins manage invitations and roles in **Tenant administration**. Invitations require the recipient's exact verified email and expire after seven days; no invitation email is sent by the app. Owners may appoint additional owners, and the last owner cannot leave, be demoted, or have their Auth account deleted without transferring ownership first. Access changes are audited. New accounts do not receive fabricated identities, seeded tenants, or automatic access to other organizations.
+Tenant owners and admins manage invitations and roles in **Organization settings**. Invitations require the recipient's exact verified email and expire after seven days; no invitation email is sent by the app. Owners may appoint additional owners, and the last owner cannot leave, be demoted, or have their Auth account deleted without transferring ownership first. Access changes are audited. New accounts do not receive fabricated identities, seeded tenants, or automatic access to other organizations.
 
 The gateway limits pre-authentication traffic by source IP and authenticated requests by subject. The default source IP budget is shared when requests arrive through the provided reverse proxy, which is suitable for a small workspace. Adapt trusted proxy handling and budgets to your deployment before scaling traffic.
 
@@ -87,7 +103,7 @@ All endpoints below require a verified bearer token. Document endpoints require 
 | POST | `/api/templates` | Save `{name, filename, file}` after DOCX inspection |
 | GET | `/api/templates/:id/download` | Original saved DOCX template |
 | DELETE | `/api/templates/:id` | Delete a saved template (creator or tenant admin/owner) |
-| GET / POST | `/api/tenants` | List memberships or create a named tenant |
+| GET / POST | `/api/organizations` | List memberships or create `{name, slug}` organization |
 | GET | `/api/invitations` | Your pending invitations |
 | POST | `/api/invitations/:id/accept` | Accept an invitation addressed to your verified email |
 | PATCH | `/api/tenant` | Rename selected tenant (admin/owner) |

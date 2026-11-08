@@ -41,3 +41,7 @@ The Gotenberg image remains pinned to the repository's existing SHA-256 digest. 
 The GitHub Actions workflow uses [actions/checkout](https://github.com/actions/checkout/blob/main/LICENSE) and [actions/setup-node](https://github.com/actions/setup-node/blob/main/LICENSE), both MIT-licensed. CI commands also run locally or on a self-hosted runner. GitHub hosting is not a runtime dependency.
 
 Tenant implementation adds no npm dependency or application container. SQL CI uses the Ubuntu runner’s PostgreSQL service under the [PostgreSQL License](https://www.postgresql.org/about/licence/). Its license was verified before adding that test step; the application remains compatible with separately self-hosted Supabase. The selected hosted project is optional infrastructure chosen for this installation.
+
+## Optional deployment tooling
+
+Cloudflare Pages is an optional hosting service, not an application dependency. The optional Wrangler CLI 4.158.0 is licensed MIT OR Apache-2.0 (https://github.com/cloudflare/workers-sdk); the optional cloudflared CLI is Apache-2.0 (https://github.com/cloudflare/cloudflared). These tools are not bundled in the application images or frontend assets. Their distributed packages retain upstream licenses and notices. No paid Cloudflare features are required by the preview configuration.

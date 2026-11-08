@@ -17,6 +17,7 @@ export async function startWorkspaceSignIn() {
 }
 
 export function finishWorkspaceSignIn() {
+  if (workspaceConfig.routing === 'path') return Promise.resolve()
   const params = new URLSearchParams(window.location.hash.slice(1))
   const code = params.get('workspace-code')
   if (!code) return Promise.resolve()

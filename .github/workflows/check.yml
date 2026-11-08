@@ -40,9 +40,17 @@ jobs:
         env:
           GOTENBERG_TEST_URL: http://127.0.0.1:3000
           GOTENBERG_TEST_PASSWORD: ci-renderer-integration-test-password-00000000
+      - name: Build free-host frontend and API proxy
+        run: npm run build:pages
+        env:
+          PUBLIC_APP_ORIGIN: https://docuscriptor.pages.dev
+          VITE_SUPABASE_URL: https://identity.example.invalid
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_build_only
       - name: Validate deployment configuration
         env:
           DOCX_SERVICE_SECRET: ci-config-validation-docx-secret-00000000
           PDF_SERVICE_SECRET: ci-config-validation-pdf-secret-000000000
           GOTENBERG_PASSWORD: ci-config-validation-renderer-00000000000
-        run: docker compose config --quiet
+        run: |
+          docker compose config --quiet
+          docker compose -f compose.yaml -f compose.preview.yaml config --quiet

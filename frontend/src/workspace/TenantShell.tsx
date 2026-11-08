@@ -90,19 +90,19 @@ export function OrganizationShell({ identity }: { identity: Identity }) {
       {!returningTo && <button className="button primary" disabled={busy || loading} onClick={() => setCreating(!creating)}><Plus size={17} /> Create organization</button>}
     </div>
     {loading && <p role="status">Loading your organizations…</p>}
-    {error && <div className="error-box" role="alert">{error}<button className="button secondary" disabled={busy} onClick={changed}>Try again</button></div>}
+    {error && <div className="error-box" role="alert">{error}<button className="button secondary" disabled={busy} onClick={changed}>Try again</button>{returningTo && <a className="button secondary" href={workspaceConfig.appOrigin}>Your organizations</a>}</div>}
     {returningTo && !error && <p role="status">Opening your organization workspace…</p>}
     {!returningTo && (creating || (!loading && !error && organizations.length === 0 && invitations.length === 0)) && <form className="panel workflow-form organization-create" onSubmit={create}>
       <h2>Create your organization</h2><p className="form-note">Give your team its own workspace address. Only members you invite can access its documents.</p>
       <fieldset disabled={busy || loading}>
         <label className="field">Organization name<input name="name" required maxLength={120} value={name} onChange={(event) => { setName(event.target.value); if (!customSlug) setSlug(suggestOrganizationSlug(event.target.value)) }} /></label>
-        <label className="field">Workspace address<div className="workspace-address"><input name="slug" aria-label="Workspace address" required minLength={3} maxLength={40} pattern="[a-z0-9][a-z0-9-]{1,38}[a-z0-9]" value={slug} onChange={(event) => { setSlug(event.target.value.toLowerCase()); setCustomSlug(true) }} /><span>.{workspaceConfig.baseDomain}</span></div></label>
+        <label className="field">Workspace address<div className="workspace-address">{workspaceConfig.routing === 'path' && <span>{workspaceConfig.appOrigin}/org/</span>}<input name="slug" aria-label="Workspace address" required minLength={3} maxLength={40} pattern="[a-z0-9][a-z0-9-]{1,38}[a-z0-9]" value={slug} onChange={(event) => { setSlug(event.target.value.toLowerCase()); setCustomSlug(true) }} />{workspaceConfig.routing === 'subdomain' && <span>.{workspaceConfig.baseDomain}</span>}</div></label>
         <p className="form-note">Your address stays the same if you rename your organization.</p>
         <button className="button primary" type="submit">{busy ? 'Creating organization…' : 'Create organization'}</button>
       </fieldset>
     </form>}
     {!returningTo && <div className="organization-grid">{organizations.map((entry) => <a className="panel organization-card" href={workspaceUrl(entry.slug)} key={entry.id}>
-      <span className="icon-chip violet"><Building2 size={23} /></span><h2>{entry.name}</h2><p>{new URL(workspaceUrl(entry.slug)).host}</p><span className="organization-open">Open workspace <ArrowRight size={16} /></span>
+      <span className="icon-chip violet"><Building2 size={23} /></span><h2>{entry.name}</h2><p>{workspaceUrl(entry.slug).replace(/^https?:\/\//, '')}</p><span className="organization-open">Open workspace <ArrowRight size={16} /></span>
     </a>)}</div>}
     {!returningTo && invitations.length > 0 && <section className="panel workflow-form"><h2>Invitations for {identity.email}</h2>
       {invitations.map((invitation) => <div className="tenant-invitation" key={invitation.id}><div><strong>{invitation.tenant_name}</strong><p>{invitation.role} · Expires {new Date(invitation.expires_at).toLocaleDateString()}</p></div>

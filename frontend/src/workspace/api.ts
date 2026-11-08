@@ -1,5 +1,6 @@
 import { accessToken } from '../auth/supabase-auth'
 import { download } from '../shared/download'
+import { currentOrganizationSlug, workspaceConfig } from './organization-location'
 
 export class WorkspaceRequestError extends Error {
   constructor(message: string, public status: number) { super(message) }
@@ -9,6 +10,7 @@ export async function api(path: string, options: RequestInit = {}, tenantId?: st
   const headers = new Headers(options.headers)
   headers.set('Authorization', 'Bearer ' + await accessToken())
   if (tenantId) headers.set('X-Tenant-Id', tenantId)
+  if (workspaceConfig.routing === 'path' && currentOrganizationSlug) headers.set('X-Organization-Slug', currentOrganizationSlug)
   if (options.body) headers.set('Content-Type', 'application/json')
   const response = await fetch(path, { ...options, headers, signal: options.signal ?? AbortSignal.timeout(40_000) })
   if (!response.ok) {
