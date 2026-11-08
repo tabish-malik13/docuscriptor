@@ -1,0 +1,29 @@
+import { useEffect, useState } from 'react'
+import { SignInPage } from '../auth/SignInPage'
+import { authConfigured, currentIdentity, watchSignOut, type Identity } from '../auth/supabase-auth'
+import { finishWorkspaceSignIn, startWorkspaceSignIn } from '../auth/workspace-sign-in'
+import { currentOrganizationSlug, workspaceConfig } from './organization-location'
+import { OrganizationShell } from './TenantShell'
+
+export function WorkspaceApp() {
+  const [identity, setIdentity] = useState<Identity | null>(null)
+  const [loading, setLoading] = useState(authConfigured)
+  const [unavailable, setUnavailable] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    const unwatch = watchSignOut(() => setIdentity(null))
+    finishWorkspaceSignIn().then(currentIdentity).then(
+      async (user) => {
+        if (!active) return
+        if (!user && currentOrganizationSlug) await startWorkspaceSignIn()
+        else setIdentity(user)
+      },
+    ).catch((cause) => { if (active) { setUnavailable(true); setError(cause instanceof Error ? cause.message : 'Sign-in is unavailable.') } }
+    ).finally(() => { if (active) setLoading(false) })
+    return () => { active = false; unwatch() }
+  }, [])
+
+  return identity ? <OrganizationShell key={identity.id} identity={identity} /> : <><SignInPage loading={loading} unavailable={unavailable} onSignIn={setIdentity} />{error && <div className="workspace-auth-error" role="alert"><p>{error}</p><a className="button secondary" href={workspaceConfig.appOrigin}>Return to organizations</a></div>}</>
+}

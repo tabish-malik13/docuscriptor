@@ -7,13 +7,16 @@
     "node": ">=24"
   },
   "workspaces": [
-    "apps/web",
-    "services"
+    "frontend",
+    "backend"
   ],
   "scripts": {
     "dev": "npm run dev --workspace @docuscripter/web",
     "build": "npm run build --workspace @docuscripter/web",
+    "test": "node --test backend/tests/*.test.mjs",
+    "check": "npm test && npm run build",
     "start:gateway": "npm run start:gateway --workspace @docuscripter/services",
-    "start:docx": "npm run start:docx --workspace @docuscripter/services"
+    "start:docx": "npm run start:docx --workspace @docuscripter/services",
+    "start:pdf": "npm run start:pdf --workspace @docuscripter/services"
   }
 }

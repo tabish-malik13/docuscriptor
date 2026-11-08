@@ -1,0 +1,48 @@
+name: Checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    services:
+      renderer:
+        image: gotenberg/gotenberg:9@sha256:e1840b4c1ee113078cc153b8359433c9511ab544c1a15cd45b09f81c9329118a
+        ports:
+          - 3000:3000
+        env:
+          API_ENABLE_BASIC_AUTH: "true"
+          GOTENBERG_API_BASIC_AUTH_USERNAME: docuscripter
+          GOTENBERG_API_BASIC_AUTH_PASSWORD: ci-renderer-integration-test-password-00000000
+          CHROMIUM_DISABLE_JAVASCRIPT: "true"
+          CHROMIUM_DENY_PRIVATE_IPS: "true"
+          CHROMIUM_DENY_PUBLIC_IPS: "true"
+          LIBREOFFICE_ENABLE_MACROS: "false"
+          LIBREOFFICE_DENY_PRIVATE_IPS: "true"
+          LIBREOFFICE_DENY_PUBLIC_IPS: "true"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Verify tenant schema and row-level security in isolated PostgreSQL
+        run: |
+          sudo systemctl start postgresql.service
+          sudo -u postgres createdb docuscripter_test
+          cat supabase/tests/bootstrap.sql supabase/tenant-access.sql supabase/tests/tenant-access.test.sql | sudo -u postgres psql --dbname=docuscripter_test --set=ON_ERROR_STOP=1
+      - run: npm run check
+        env:
+          GOTENBERG_TEST_URL: http://127.0.0.1:3000
+          GOTENBERG_TEST_PASSWORD: ci-renderer-integration-test-password-00000000
+      - name: Validate deployment configuration
+        env:
+          DOCX_SERVICE_SECRET: ci-config-validation-docx-secret-00000000
+          PDF_SERVICE_SECRET: ci-config-validation-pdf-secret-000000000
+          GOTENBERG_PASSWORD: ci-config-validation-renderer-00000000000
+        run: docker compose config --quiet
