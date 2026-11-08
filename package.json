@@ -1,0 +1,19 @@
+{
+  "name": "docuscripter",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "apps/web",
+    "services"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @docuscripter/web",
+    "build": "npm run build --workspace @docuscripter/web",
+    "start:gateway": "npm run start:gateway --workspace @docuscripter/services",
+    "start:docx": "npm run start:docx --workspace @docuscripter/services"
+  }
+}

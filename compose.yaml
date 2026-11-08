@@ -1,0 +1,78 @@
+name: docuscripter
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: infra/Containerfile
+      target: web
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:-}
+    environment:
+      SUPABASE_PUBLIC_URL: ${VITE_SUPABASE_URL:-}
+    ports:
+      - "127.0.0.1:4173:4173"
+    networks: [frontend]
+    depends_on: [gateway]
+
+  gateway:
+    build:
+      context: .
+      dockerfile: infra/Containerfile
+      target: service
+    command: ["node", "services/gateway/server.mjs"]
+    environment:
+      SUPABASE_URL: ${SUPABASE_GATEWAY_URL:-${VITE_SUPABASE_URL:-}}
+      SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:-}
+      DOCX_SERVICE_URL: http://docx:4001
+      PDF_SERVICE_URL: http://pdf:3000
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 384m
+    networks: [frontend, processing]
+    depends_on:
+      docx:
+        condition: service_healthy
+      pdf:
+        condition: service_started
+
+  docx:
+    build:
+      context: .
+      dockerfile: infra/Containerfile
+      target: service
+    command: ["node", "services/docx/server.mjs"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 384m
+    networks: [processing]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  pdf:
+    image: gotenberg/gotenberg:9@sha256:e1840b4c1ee113078cc153b8359433c9511ab544c1a15cd45b09f81c9329118a
+    environment:
+      API_TIMEOUT: 25s
+      CHROMIUM_DISABLE_JAVASCRIPT: "true"
+      CHROMIUM_DISABLE_WEB_SECURITY: "false"
+      CHROMIUM_DENY_PRIVATE_IPS: "true"
+      CHROMIUM_DENY_PUBLIC_IPS: "true"
+      CHROMIUM_MAX_QUEUE_SIZE: "5"
+      LIBREOFFICE_ENABLE_MACROS: "false"
+      LIBREOFFICE_DENY_PRIVATE_IPS: "true"
+      LIBREOFFICE_DENY_PUBLIC_IPS: "true"
+      LIBREOFFICE_MAX_QUEUE_SIZE: "5"
+    networks: [processing]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1024m
+
+networks:
+  frontend: {}
+  processing:
+    internal: true
