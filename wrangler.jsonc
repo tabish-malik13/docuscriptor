@@ -2,5 +2,14 @@
   "name": "docuscriptor",
   "pages_build_output_dir": "frontend/dist",
   "compatibility_date": "2026-10-01",
-  "compatibility_flags": ["nodejs_compat"]
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "vars": {
+    "PROCESSOR_ORIGIN": "https://docuscripter-processing.onrender.com",
+    "PUBLIC_PROCESSOR_ENABLED": "true",
+    "PUBLIC_APP_ORIGIN": "https://docuscriptor.pages.dev",
+    "VITE_SUPABASE_URL": "https://ttyrtwackxzyhtbvuhmf.supabase.co",
+    "VITE_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_n_7P1C1ebD6P1RAXPPPRKw_MXurDCPV"
+  }
 }
