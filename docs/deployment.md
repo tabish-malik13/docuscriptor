@@ -1,6 +1,6 @@
 # Cloud-only deployment on the free tiers
 
-Live frontend: **https://docuscriptor.pages.dev**. Organizations use `/org/<slug>`.
+Live frontend: **https://docuscriptor.pages.dev**. Organizations use `/org/<slug>`. Processing gateway: **https://docuscripter-processing.onrender.com**. Both hosts deploy source from `codex/render-processing`; Render auto-deploy is off.
 
 | Component | Host |
 | --- | --- |
@@ -9,14 +9,16 @@ Live frontend: **https://docuscriptor.pages.dev**. Organizations use `/org/<slug
 | Identity and organization memberships | Supabase Auth and Postgres |
 | Document metadata | Supabase Postgres `ds_documents`, with RLS |
 | Private DOCX/PDF files | Supabase Storage `ds-documents` bucket |
+| Verified processing gateway, DOCX and private Gotenberg/LibreOffice | Render Free Docker service |
+| Scheduled processing health request | Cloudflare Worker Cron |
 
 No PC backend, tunnel, SQLite database, persistent server disk, or purchased domain is required. Existing local documents are not imported, as requested. The old SQLite adapter is used only by historical regression tests; production imports never load it.
 
 ## Supported in this version
 
-Verified sign-in, organization creation, invitations, roles, private document upload/download/deletion, and the browser DOCX editor are available. Uploads accept DOCX/PDF files up to 4 MB. Download edits from the browser editor, then upload the result to the organization's Documents page. Uploads are stored as supplied; this release does not run server document inspection, conversion, or malware scanning.
+Verified sign-in, organization creation, invitations, roles, private document upload/download/deletion, and the browser DOCX editor are available. Uploads accept DOCX/PDF files up to 4 MB. Download edits from the browser editor, then upload the result to the organization's Documents page. Uploads are stored as supplied; uploads do not automatically trigger conversion or malware scanning.
 
-DOCX generation, template processing, and PDF conversion are disabled in the hosted UI and API. Their source and separately deployable services remain in the repository for future use. A caller cannot enable hosted processing by changing the client flag: the hosted gateway has no processing-service calls and returns 501 after authorization.
+DOCX generation, template processing, and PDF conversion can be enabled with the Render processing profile below. The Pages API verifies authorization before forwarding processing requests to the configured Render gateway, which independently checks identity and current organization membership. Without a configured processor, these endpoints return 501 after authorization.
 
 ## Free limits
 
@@ -35,14 +37,14 @@ Objects use immutable organization/UUID paths. RLS checks current verified membe
    VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
    ```
 
-   The publishable key is intentionally public. No Supabase secret/service-role key or processing-service secret belongs in Pages. The Pages build forces path routing and disables processing. `wrangler.jsonc` enables Node compatibility for the gateway's Buffer/crypto primitives; no Node server runs in Pages.
+   The publishable key is intentionally public. No Supabase secret/service-role key or processing-service secret belongs in Pages. The Pages build forces path routing. Processing controls require `PUBLIC_PROCESSOR_ENABLED=true`; the API separately requires the runtime `PROCESSOR_ORIGIN` binding. `wrangler.jsonc` enables Node compatibility for the gateway's Buffer/crypto primitives; no Node server runs in Pages.
 3. Build and publish:
 
    ```sh
    npm ci
    PUBLIC_APP_ORIGIN=https://docuscriptor.pages.dev npm run build:pages
    npx --yes wrangler@4.158.0 login
-   npx --yes wrangler@4.158.0 pages deploy frontend/dist --project-name docuscriptor --branch main
+   npx --yes wrangler@4.158.0 pages deploy frontend/dist --project-name docuscriptor --branch codex/render-processing
    ```
 
 4. For Git-connected builds, use repository root, build command `npm run build:pages`, output directory `frontend/dist`, and Node 24+. Push the new source/configuration files before relying on automatic Git builds.

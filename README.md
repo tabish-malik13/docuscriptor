@@ -1,6 +1,6 @@
 # DocuScripter
 
-A proprietary document workspace using self-hostable open-source components. The hosted version runs on Cloudflare Pages and Supabase, with no PC backend or SQLite runtime. See [project rules](AGENTS.md), [deployment guide](docs/deployment.md), and [third-party notices](THIRD_PARTY_NOTICES.md).
+A proprietary document workspace using self-hostable open-source components. The hosted version runs on Cloudflare Pages, Supabase and Render Free, with no PC backend or SQLite runtime. See [project rules](AGENTS.md), [deployment guide](docs/deployment.md), and [third-party notices](THIRD_PARTY_NOTICES.md).
 
 **Live:** https://docuscriptor.pages.dev
 
@@ -12,7 +12,7 @@ The **Documents** page uploads DOCX/PDF files up to 4 MB to a private Supabase S
 
 The **DOCX editor** creates or opens a Word document in your browser. Download your edits, then upload the file to Documents if you want to save it to your organization. Editor state remains in browser memory until downloaded. The editor is available without signing in and does not perform server processing.
 
-DOCX generation, template processing, and PDF conversion are **not supported in the hosted release**. Their code remains separately deployable in `backend/docx`, `backend/pdf`, and the optional Fastify gateway. The hosted API does not contact those services, regardless of client flags. Existing local documents have not been imported.
+DOCX generation, template processing, and PDF conversion run through the verified Render gateway. Gotenberg/LibreOffice remains private inside its container. The small free instance accepts one processing operation at a time. Existing local documents have not been imported.
 
 ## Cloud deployment
 
@@ -20,8 +20,8 @@ The Pages Worker handles organizations and file operations directly against Supa
 
 ```sh
 npm ci
-PUBLIC_APP_ORIGIN=https://docuscriptor.pages.dev npm run build:pages
-npx --yes wrangler@4.158.0 pages deploy frontend/dist --project-name docuscriptor --branch main
+PUBLIC_PROCESSOR_ENABLED=true PUBLIC_APP_ORIGIN=https://docuscriptor.pages.dev npm run build:pages
+npx --yes wrangler@4.158.0 pages deploy frontend/dist --project-name docuscriptor --branch codex/render-processing
 ```
 
 Configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` as described in `.env.example`. Apply the Supabase migrations before deployment. Never expose secret or service-role keys in frontend variables.
@@ -39,11 +39,11 @@ Open http://127.0.0.1:5173/editor.html. The editor needs no backend. The old tem
 
 ## Optional processing services
 
-The existing DOCX/PDF code is retained for future self-hosted use. Identity, document generation and conversion remain separately deployable. The web app uses a gateway for document operations; processing services use private Docker networks. The gateway verifies identity, membership and role before issuing service-specific HMAC assertions bound to the user, organization, payload and expiry. The PDF renderer additionally requires Basic authentication.
+The Render profile runs the DOCX/PDF services and Gotenberg in one free container with private loopback listeners. A separate Cloudflare Cron Worker requests its health endpoint at intervals of at most fourteen minutes, subject to scheduler delays. See the deployment guide for the exact schedule and free-tier limits. Identity, document generation and conversion remain separately deployable. The web app uses a gateway for document operations; processing services use private Docker networks. The gateway verifies identity, membership and role before issuing service-specific HMAC assertions bound to the user, organization, payload and expiry. The PDF renderer additionally requires Basic authentication.
 
 The optional Compose stack requires three distinct server secrets (`DOCX_SERVICE_SECRET`, `PDF_SERVICE_SECRET`, `GOTENBERG_PASSWORD`) and the configured Supabase schema. These secrets must never be uploaded to Pages. `docker compose up --build -d` runs the optional stack; `npm run dev` runs the optional native services and Vite. These commands are unnecessary for the live cloud-only release. The normal gateway now uses Supabase persistence; the historical SQLite adapter remains only to verify regression fixtures, and is not used in production.
 
-The retained processing code validates DOCX/ZIP uploads, restricts template expressions, disables renderer macros/JavaScript/outbound document requests, limits concurrent operations, and checks permission again before saving a result. No hosted processing capability is enabled by retaining this code.
+The retained processing code validates DOCX/ZIP uploads, restricts template expressions, disables renderer macros/JavaScript/outbound document requests, limits concurrent operations, and checks permission again before saving a result. Hosted processing also requires the configured Pages runtime processor origin; a client flag alone cannot enable it.
 
 ## Checks
 
