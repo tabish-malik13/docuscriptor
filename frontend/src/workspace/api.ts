@@ -11,8 +11,9 @@ export async function api(path: string, options: RequestInit = {}, tenantId?: st
   headers.set('Authorization', 'Bearer ' + await accessToken())
   if (tenantId) headers.set('X-Tenant-Id', tenantId)
   if (workspaceConfig.routing === 'path' && currentOrganizationSlug) headers.set('X-Organization-Slug', currentOrganizationSlug)
-  if (options.body) headers.set('Content-Type', 'application/json')
-  const response = await fetch(path, { ...options, headers, signal: options.signal ?? AbortSignal.timeout(40_000) })
+  if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  const processing = options.method === 'POST' && ['/api/docx/generate','/api/pdf/convert','/api/templates'].includes(path)
+  const response = await fetch(path, { ...options, headers, signal: options.signal ?? AbortSignal.timeout(processing ? 150_000 : 40_000) })
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
     throw new WorkspaceRequestError(body.message || 'The workspace request failed. Try again.', response.status)

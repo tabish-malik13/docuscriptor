@@ -1,6 +1,7 @@
 import Fastify from 'fastify'
 
-export class InputError extends Error {}
+import { InputError } from '../../shared/problems.mjs'
+export { InputError } from '../../shared/problems.mjs'
 
 export function createService({ logger = { level: process.env.LOG_LEVEL || 'info', redact: ['req.headers.authorization'] } } = {}) {
   const app = Fastify({

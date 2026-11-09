@@ -1,4 +1,4 @@
-import { problem } from './store.mjs'
+import { problem } from '../../shared/problems.mjs'
 
 export const tenantRoles = new Set(['owner', 'admin', 'operator', 'viewer'])
 export const processingRoles = new Set(['owner', 'admin', 'operator'])

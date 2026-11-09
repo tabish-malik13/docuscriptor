@@ -51,3 +51,7 @@ The regular Node tests use isolated identity/tenant doubles and temporary SQLite
 The selected base domain is `docuscriptor.com`. Configure wildcard DNS, HTTPS ingress, and the public origin/domain build settings as described in the root README before using public workspace URLs. Local development uses `docuscriptor.localhost` workspace subdomains and needs no public DNS changes.
 
 The hosted security advisor reports that [leaked-password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) is disabled. This is a provider setting; no paid feature is required by DocuScripter.
+
+## Cloud document persistence
+
+The hosted release also requires the document-storage migrations, or `document-storage.sql` on a fresh schema after `tenant-access.sql`. Metadata lives in `public.ds_documents`; DOCX/PDF bytes live in the private `ds-documents` bucket. Runtime uses the verified user token and publishable key, never a service-role key. No SQLite database or local backend is needed for Pages. See [cloud deployment](../docs/deployment.md). Existing local documents are not imported.

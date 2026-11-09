@@ -1,5 +1,5 @@
 import { organizationSlugPattern, reservedSlugs } from '../../shared/organization-url.mjs'
-import { problem } from './store.mjs'
+import { problem } from '../../shared/problems.mjs'
 
 const id = { type: 'string', format: 'uuid' }
 const params = { type: 'object', required: ['id'], additionalProperties: false, properties: { id } }
@@ -51,6 +51,6 @@ export function registerTenantRoutes(app, { auth, authority, store }) {
     type: 'object', required: ['shareWithTenant'], additionalProperties: false, properties: { shareWithTenant: { const: true } },
   } } }, async (request) => {
     if (request.tenantRole !== 'owner') throw problem(403, 'Tenant ownership is required to import personal records.')
-    return store.importLegacy(request.tenantId, request.subject)
+    return store.importLegacy(request.tenantId, request.subject, request)
   })
 }

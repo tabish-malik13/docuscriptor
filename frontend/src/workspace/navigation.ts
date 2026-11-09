@@ -1,3 +1,4 @@
+import { processingEnabled } from './features'
 import { Clock3, FileOutput, FilePlus2, LayoutDashboard, LayoutTemplate, ShieldCheck } from 'lucide-react'
 
 export const views = {
@@ -5,19 +6,21 @@ export const views = {
   generate: { title: 'Generate DOCX', icon: FilePlus2 },
   convert: { title: 'Convert to PDF', icon: FileOutput },
   templates: { title: 'Templates', icon: LayoutTemplate },
-  activity: { title: 'Activity', icon: Clock3 },
+  activity: { title: processingEnabled ? 'Activity' : 'Documents', icon: Clock3 },
   team: { title: 'Organization settings', icon: ShieldCheck },
   account: { title: 'Account & access', icon: ShieldCheck },
 }
 export type View = keyof typeof views
 
-export const actions = [
+export const actions = processingEnabled ? [
   { view: 'generate', title: 'Generate DOCX', text: 'Fill a Word template with your data.', tone: 'violet', icon: FilePlus2 },
   { view: 'convert', title: 'Convert to PDF', text: 'Export Word or HTML as a PDF.', tone: 'mint', icon: FileOutput },
   { view: 'templates', title: 'Browse templates', text: 'Get started with ready-to-use layouts.', tone: 'amber', icon: LayoutTemplate },
-] as const
+] as const : [{ view:'activity',title:'Your documents',text:'Upload and download your organization’s private files.',tone:'violet',icon:Clock3 }] as const
 
 export function readView(): View {
   const view = window.location.hash.slice(1)
-  return Object.hasOwn(views, view) ? view as View : 'overview'
+  return Object.hasOwn(views, view) && supportedView(view as View) ? view as View : 'overview'
 }
+
+export const supportedView = (view: View) => processingEnabled || !['generate','convert','templates'].includes(view)

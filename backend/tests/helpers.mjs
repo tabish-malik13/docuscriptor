@@ -5,7 +5,8 @@ import { join } from 'node:path'
 import { buildGatewayApp } from '../gateway/app.mjs'
 import { buildDocxApp } from '../docx/app.mjs'
 import { buildPdfApp } from '../pdf/app.mjs'
-import { problem } from '../gateway/store.mjs'
+import { createStore } from '../gateway/store.mjs'
+import { problem } from '../../shared/problems.mjs'
 
 // Principals exist only inside these tests. No accounts or seeded application data are created.
 export async function fixture(t, options = {}) {
@@ -86,14 +87,14 @@ export async function fixture(t, options = {}) {
     if (options.onServiceResult) await options.onServiceResult()
     return new Response(result.rawPayload, { status: result.statusCode, headers: result.headers })
   }
-  const gatewayOptions = { storePath: join(dir, 'workspace.sqlite'), docxService: 'http://docx.invalid', pdfService: 'http://pdf.invalid', docxSecret, pdfSecret, authOptions, tenantAuthority, fetchImpl, logger: false, ...(options.organizationOptions ? { organizationOptions: options.organizationOptions } : {}) }
+  const gatewayOptions = { documentStore: options.documentStore || createStore(join(dir,'workspace.sqlite')), storageOptions: options.storageOptions, storePath: join(dir, 'workspace.sqlite'), docxService: 'http://docx.invalid', pdfService: 'http://pdf.invalid', docxSecret, pdfSecret, authOptions, tenantAuthority, fetchImpl, logger: false, ...(options.organizationOptions ? { organizationOptions: options.organizationOptions } : {}) }
   let gateway = await buildGatewayApp(gatewayOptions)
   t.after(async () => { await gateway.close(); await docx.close(); await pdf.close() })
   return {
     get gateway() { return gateway }, docx, pdf, docxSecret, pdfSecret, principal, setRole,
     organizationSlug: (id) => tenants.get(id)?.slug,
     get authCalls() { return authCalls }, get rendererCalls() { return rendererCalls },
-    async restart() { await gateway.close(); gateway = await buildGatewayApp(gatewayOptions) },
+    async restart() { await gateway.close(); gatewayOptions.documentStore = createStore(join(dir,'workspace.sqlite')); gateway = await buildGatewayApp(gatewayOptions) },
     dir,
   }
 }

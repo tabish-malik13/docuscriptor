@@ -1,3 +1,5 @@
+import { processingEnabled, cloudFilesEnabled } from './features'
+import { FileUpload } from './FileUpload'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft, Bell, ChevronRight, CircleHelp, FilePenLine, FileText,
@@ -9,7 +11,7 @@ import { ActivityTable } from './ActivityTable'
 import { DocumentWorkflow } from './DocumentWorkflow'
 import { OverviewPage } from './OverviewPage'
 import type { Activity } from './activity'
-import { actions, readView, views, type View } from './navigation'
+import { actions, readView, views, supportedView, type View } from './navigation'
 import { templates as starters, savedTemplate, type SavedTemplate, type Template } from './starter-templates'
 import { roleLabels, useTenantApi } from './TenantContext'
 import { TenantAccessPage } from './TenantAccessPage'
@@ -113,12 +115,12 @@ export function Workspace({ identity: user }: { identity: Identity }) {
     </button>
   }
 
-  const matches = (Object.keys(views) as View[]).filter((entry) => views[entry].title.toLowerCase().includes(query.trim().toLowerCase()))
+  const matches = (Object.keys(views) as View[]).filter(supportedView).filter((entry) => views[entry].title.toLowerCase().includes(query.trim().toLowerCase()))
   const descriptions = {
     generate: 'Combine a Word template with runtime values to create an editable document.',
     convert: 'Turn Word documents and HTML files into shareable PDFs.',
     templates: 'Choose a starter layout and make it your own with runtime values.',
-    activity: 'Review saved documents and processing history for your account.',
+    activity: processingEnabled ? 'Review saved documents and processing history for your account.' : 'Upload and download documents shared with your organization.',
     account: 'Review your identity and the permissions assigned to your organization membership.',
     team: 'Manage organization members, invitations, ownership, and access history.',
   }
@@ -134,10 +136,10 @@ export function Workspace({ identity: user }: { identity: Identity }) {
         </div>
         <nav aria-label="Workspace navigation">
           <div className="nav-group"><span className="label">WORKSPACE</span>
-            {(['overview', 'generate', 'convert'] as const).map(nav)}
+            {(['overview', 'generate', 'convert'] as const).filter(supportedView).map(nav)}
             <a className="nav-item" href="/editor.html" target="_blank" rel="noopener"><FilePenLine size={18} strokeWidth={1.8} /> DOCX editor <span className="sr-only">(opens in a new tab)</span></a>
           </div>
-          <div className="nav-group"><span className="label">LIBRARY</span>{(['templates', 'activity'] as const).map(nav)}{canAdmin && nav('team')}</div>
+          <div className="nav-group"><span className="label">LIBRARY</span>{(['templates', 'activity'] as const).filter(supportedView).map(nav)}{canAdmin && nav('team')}</div>
         </nav>
         <div className="sidebar-bottom">
           <a className="nav-item" href={workspaceConfig.appOrigin}>Your organizations</a>
@@ -169,7 +171,8 @@ export function Workspace({ identity: user }: { identity: Identity }) {
             {view === 'generate' && <DocumentWorkflow key={selected?.id || 'upload'} kind="DOCX" identity={identity} selected={selected} templates={templates} onComplete={onDataChange} />}
             {view === 'convert' && <DocumentWorkflow kind="PDF" identity={identity} templates={templates} onComplete={onDataChange} />}
             {view === 'activity' && <>
-              <div className="section-heading"><span>{items.length} jobs loaded</span><button className="button secondary" disabled={loadingData} onClick={onDataChange}>Refresh</button></div>
+              {cloudFilesEnabled && <FileUpload onChange={onDataChange} />}
+              <div className="section-heading"><span>{items.length} {processingEnabled ? 'jobs' : 'documents'} loaded</span><button className="button secondary" disabled={loadingData} onClick={onDataChange}>Refresh</button></div>
               <div className="panel"><ActivityTable items={items} onChange={identity.canProcess ? onDataChange : undefined} currentUserId={identity.id} /></div>
               {nextOffset !== null && <button className="button secondary load-more" disabled={loadingMore || loadingData} onClick={() => { void loadMore() }}>{loadingMore ? 'Loading…' : 'Load more'}</button>}
             </>}
@@ -177,7 +180,7 @@ export function Workspace({ identity: user }: { identity: Identity }) {
             {view === 'team' && (canAdmin ? <TenantAccessPage /> : <p className="form-note">Organization administrator access is required.</p>)}
             {view === 'account' && <section className="panel account-panel">
               <div className="form-heading"><span className="avatar">{initials}</span><div><h2>{identity.name}</h2><p>{identity.email || 'Workspace account'}</p></div></div>
-              <dl><dt>Organization</dt><dd>{tenant.name}</dd><dt>Organization role</dt><dd>{identity.role}</dd><dt>Document processing</dt><dd>{identity.canProcess ? 'Allowed' : 'View only'}</dd><dt>Identity provider</dt><dd>Supabase Auth</dd></dl>
+              <dl><dt>Organization</dt><dd>{tenant.name}</dd><dt>Organization role</dt><dd>{identity.role}</dd><dt>Document processing</dt><dd>{!processingEnabled ? 'Not supported in this version' : identity.canProcess ? 'Allowed' : 'View only'}</dd><dt>Identity provider</dt><dd>Supabase Auth</dd></dl>
               {accountError && <p className="error-box" role="alert">{accountError}</p>}
               <button className="button secondary" onClick={() => {
                 if (window.confirm('Leave this organization? You will lose access to its documents and templates.')) {

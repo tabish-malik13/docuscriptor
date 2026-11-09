@@ -35,7 +35,7 @@ jobs:
         run: |
           sudo systemctl start postgresql.service
           sudo -u postgres createdb docuscripter_test
-          cat supabase/tests/bootstrap.sql supabase/tenant-access.sql supabase/tests/tenant-access.test.sql | sudo -u postgres psql --dbname=docuscripter_test --set=ON_ERROR_STOP=1
+          cat supabase/tests/bootstrap.sql supabase/tenant-access.sql supabase/tests/tenant-access.test.sql supabase/tests/storage-bootstrap.sql supabase/document-storage.sql supabase/tests/document-storage.test.sql | sudo -u postgres psql --dbname=docuscripter_test --set=ON_ERROR_STOP=1
       - run: npm run check
         env:
           GOTENBERG_TEST_URL: http://127.0.0.1:3000

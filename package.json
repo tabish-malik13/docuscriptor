@@ -20,6 +20,10 @@
     "start:docx": "npm run start:docx --workspace @docuscripter/services",
     "start:pdf": "npm run start:pdf --workspace @docuscripter/services",
     "build:pages": "node scripts/build-pages.mjs",
-    "preview:backend": "node scripts/preview.mjs"
+    "preview:backend": "node scripts/preview.mjs",
+    "deploy:processing-health": "node scripts/deploy-processing-health.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
   }
 }

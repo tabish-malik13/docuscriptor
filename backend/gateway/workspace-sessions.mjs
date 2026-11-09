@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { organizationUrl, organizationSlugFromHost } from '../../shared/organization-url.mjs'
-import { problem } from './store.mjs'
+import { problem } from '../../shared/problems.mjs'
 
 const hash = (value) => createHash('sha256').update(value).digest('base64url')
 export function registerWorkspaceSessions(app, { auth, authority, organizations, now = Date.now }) {

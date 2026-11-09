@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: docuscripter-processing
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./infra/Render.Containerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeployTrigger: off
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: APP_ORIGIN
+        value: https://docuscriptor.pages.dev
+      - key: ORGANIZATION_BASE_DOMAIN
+        value: docuscriptor.pages.dev
+      - key: ORGANIZATION_ROUTING
+        value: path

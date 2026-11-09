@@ -1,3 +1,4 @@
+import { processingEnabled } from '../workspace/features'
 import { useState, type FormEvent } from 'react'
 import { ArrowRight, FilePenLine, LoaderCircle, ShieldCheck, Sparkles } from 'lucide-react'
 import { Brand } from '../shared/Brand'
@@ -38,7 +39,7 @@ export function SignInPage({ loading, unavailable, onSignIn }: {
   return (
     <main className="login">
       <div className="login-story"><Brand /><div><span className="hero-label"><Sparkles size={14} /> DOCUMENT WORKSPACE</span>
-        <h1>From data to finished documents.</h1><p>Create Word documents and convert them to PDF in a workspace your team controls.</p>
+        <h1>From data to finished documents.</h1><p>{processingEnabled ? 'Create Word documents and convert them to PDF in a workspace your team controls.' : 'Edit Word documents and store files in a private workspace for your team.'}</p>
         <DocumentFlowIllustration />
       </div></div>
       <div className="login-area">

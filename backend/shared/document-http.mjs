@@ -1,4 +1,5 @@
-import { InputError } from './http-service.mjs'
+import { InputError } from '../../shared/problems.mjs'
+import { Buffer } from 'node:buffer'
 
 export const maxFileBytes = 4 * 1024 * 1024
 export const maxOutputBytes = 16 * 1024 * 1024

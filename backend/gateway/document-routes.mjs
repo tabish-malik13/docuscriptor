@@ -3,7 +3,7 @@ import {
 } from '../shared/document-http.mjs'
 import { InputError } from '../shared/http-service.mjs'
 import { signServiceRequest } from '../shared/service-authorization.mjs'
-import { problem } from './store.mjs'
+import { problem } from '../../shared/problems.mjs'
 import { adminRoles } from './tenant-authority.mjs'
 
 const idSchema = { type: 'string', pattern: '^[a-f0-9-]{36}$' }
@@ -20,10 +20,11 @@ const generationSchema = {
 const starterNames = { invoice: 'Invoice', letter: 'Business letter', brief: 'Project brief' }
 const outputName = (source, kind) => source.replace(/\.[^.]+$/, '').slice(0, 200) + '.' + kind.toLowerCase()
 
-export function registerDocumentRoutes(app, { store, auth, docxService, pdfService, docxSecret, pdfSecret, fetchImpl = fetch }) {
+export function registerDocumentRoutes(app, { store, auth, docxService, pdfService, docxSecret, pdfSecret, fetchImpl = fetch, processingLimit = 4 }) {
+  const scoped = (request) => store.forRequest ? store.forRequest(request) : store
   let active = 0
   async function processing(work) {
-    if (active >= 4) throw problem(503, 'The workspace is busy. Try again shortly.')
+    if (active >= processingLimit) throw problem(503, 'The workspace is busy. Try again shortly.')
     active++
     try { return await work() } finally { active-- }
   }
@@ -56,7 +57,7 @@ export function registerDocumentRoutes(app, { store, auth, docxService, pdfServi
   async function generate(request, reply, kind, payload, source) {
     return processing(async () => {
       const name = outputName(source, kind)
-      const id = store.beginJob(request.tenantId, { name, kind, source, createdBy: request.subject })
+      const id = await scoped(request).beginJob(request.tenantId, { name, kind, source, createdBy: request.subject })
       try {
         const response = await callService(request.subject, request.tenantId, kind === 'DOCX' ? 'docx' : 'pdf', kind === 'DOCX' ? '/generate' : '/convert', payload)
         const type = kind === 'DOCX' ? docxType : pdfType
@@ -66,11 +67,11 @@ export function registerDocumentRoutes(app, { store, auth, docxService, pdfServi
           throw problem(502, 'The processing service returned an invalid document.')
         }
         await auth.recheckProcessing(request)
-        store.completeJob(request.tenantId, id, bytes)
+        await scoped(request).completeJob(request.tenantId, id, bytes)
         reply.header('X-Document-Id', id)
         return sendAttachment(reply, bytes, type, name)
       } catch (error) {
-        store.failJob(request.tenantId, id, error instanceof InputError ? error.message : error.publicMessage || 'Document processing failed. Submit the document again.')
+        try { await scoped(request).failJob(request.tenantId, id, error instanceof InputError ? error.message : error.publicMessage || 'Document processing failed. Submit the document again.') } catch { /* Revocation can also deny cleanup. The reservation stays charged until deletion. */ }
         throw error
       }
     })
@@ -81,7 +82,7 @@ export function registerDocumentRoutes(app, { store, auth, docxService, pdfServi
     let payload = request.body
     let source = starterNames[payload.templateId] || payload.filename
     if (payload.savedTemplateId) {
-      const saved = store.template(request.tenantId, payload.savedTemplateId)
+      const saved = await scoped(request).template(request.tenantId, payload.savedTemplateId)
       if (!saved) throw problem(404, 'Template not found.')
       payload = { filename: 'template.docx', file: Buffer.from(saved.file).toString('base64'), values: payload.values }
       source = saved.name
@@ -97,26 +98,26 @@ export function registerDocumentRoutes(app, { store, auth, docxService, pdfServi
     type: 'object', additionalProperties: false, properties: { offset: { type: 'string', pattern: '^(0|[1-9][0-9]{0,4})$' } },
   } } }, async (request) => {
     const offset = Number(request.query.offset || 0)
-    const items = store.listJobs(request.tenantId, offset)
+    const items = await scoped(request).listJobs(request.tenantId, offset)
     return { items, nextOffset: items.length === 50 ? offset + 50 : null }
   })
   app.get('/api/jobs/:id', { ...read, schema: { params: paramsSchema } }, async (request) => {
-    const job = store.job(request.tenantId, request.params.id)
+    const job = await scoped(request).job(request.tenantId, request.params.id)
     if (!job) throw problem(404, 'Document not found.')
     return job
   })
   app.get('/api/jobs/:id/download', { ...read, schema: { params: paramsSchema } }, async (request, reply) => {
-    const artifact = store.artifact(request.tenantId, request.params.id)
+    const artifact = await scoped(request).artifact(request.tenantId, request.params.id)
     if (!artifact) throw problem(404, 'Document not found or not ready.')
     return sendAttachment(reply, Buffer.from(artifact.artifact), artifact.kind === 'DOCX' ? docxType : pdfType, artifact.name)
   })
   app.delete('/api/jobs/:id', { ...write, schema: { params: paramsSchema } }, async (request, reply) => {
-    const job = store.job(request.tenantId, request.params.id)
+    const job = await scoped(request).job(request.tenantId, request.params.id)
     if (job && job.createdBy !== request.subject && !adminRoles.has(request.tenantRole)) throw problem(403, 'Only the creator or a tenant administrator can delete this document.')
-    if (!store.deleteJob(request.tenantId, request.params.id)) throw problem(404, 'Document not found.')
+    if (!await scoped(request).deleteJob(request.tenantId, request.params.id)) throw problem(404, 'Document not found.')
     return reply.code(204).send()
   })
-  app.get('/api/templates', read, async (request) => ({ items: store.listTemplates(request.tenantId) }))
+  app.get('/api/templates', read, async (request) => ({ items: await scoped(request).listTemplates(request.tenantId) }))
   app.post('/api/templates', { ...write, schema: { body: {
     ...uploadSchema, required: ['name', 'filename', 'file'],
     properties: { ...uploadSchema.properties, name: { type: 'string', minLength: 1, maxLength: 120, pattern: '\\S' } },
@@ -132,18 +133,18 @@ export function registerDocumentRoutes(app, { store, auth, docxService, pdfServi
       throw problem(502, 'The template service returned invalid fields.')
     }
     await auth.recheckProcessing(request)
-    const saved = store.saveTemplate(request.tenantId, name.trim(), metadata.fields, bytes, request.subject)
+    const saved = await scoped(request).saveTemplate(request.tenantId, name.trim(), metadata.fields, bytes, request.subject)
     return reply.code(201).send(saved)
   }))
   app.get('/api/templates/:id/download', { ...read, schema: { params: paramsSchema } }, async (request, reply) => {
-    const saved = store.template(request.tenantId, request.params.id)
+    const saved = await scoped(request).template(request.tenantId, request.params.id)
     if (!saved) throw problem(404, 'Template not found.')
     return sendAttachment(reply, Buffer.from(saved.file), docxType, saved.name + '.docx')
   })
   app.delete('/api/templates/:id', { ...write, schema: { params: paramsSchema } }, async (request, reply) => {
-    const saved = store.template(request.tenantId, request.params.id)
+    const saved = await scoped(request).template(request.tenantId, request.params.id)
     if (saved && saved.createdBy !== request.subject && !adminRoles.has(request.tenantRole)) throw problem(403, 'Only the creator or a tenant administrator can delete this template.')
-    if (!store.deleteTemplate(request.tenantId, request.params.id)) throw problem(404, 'Template not found.')
+    if (!await scoped(request).deleteTemplate(request.tenantId, request.params.id)) throw problem(404, 'Template not found.')
     return reply.code(204).send()
   })
 }

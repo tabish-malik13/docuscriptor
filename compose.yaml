@@ -34,12 +34,9 @@ services:
       PDF_SERVICE_URL: http://pdf:4002
       DOCX_SERVICE_SECRET: ${DOCX_SERVICE_SECRET:?Set DOCX_SERVICE_SECRET in .env}
       PDF_SERVICE_SECRET: ${PDF_SERVICE_SECRET:?Set PDF_SERVICE_SECRET in .env}
-      DATA_PATH: /app/data/workspace.sqlite
       APP_ORIGIN: ${PUBLIC_APP_ORIGIN:-http://localhost:4173}
       ORGANIZATION_BASE_DOMAIN: ${PUBLIC_ORGANIZATION_BASE_DOMAIN:-docuscriptor.localhost}
       ORGANIZATION_ROUTING: ${PUBLIC_ORGANIZATION_ROUTING:-subdomain}
-    volumes:
-      - workspace-data:/app/data
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
@@ -125,6 +122,3 @@ networks:
     internal: true
   rendering:
     internal: true
-
-volumes:
-  workspace-data: {}

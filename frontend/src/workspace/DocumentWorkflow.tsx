@@ -90,6 +90,7 @@ export function DocumentWorkflow({ kind, identity, selected, templates, onComple
         {result && <div className="success-box" role="status"><CheckCircle2 size={17} /> {result.name} is ready.
           <button className="icon-button" type="button" aria-label="Download result" onClick={() => { void downloadSaved('/api/jobs/' + result.id + '/download', result.name).catch((cause) => setError(cause instanceof Error ? cause.message : 'Download failed.')) }}><Download size={17} /></button>
         </div>}
+        {busy && <p className="form-note" role="status">The first request may take up to two minutes while the converter wakes up. Please keep this page open.</p>}
         <button className="button primary" type="submit" disabled={busy || !identity.canProcess}>
           {busy ? <LoaderCircle size={17} className="spin" /> : <ArrowRight size={17} />}
           {busy ? 'Processing…' : word ? 'Generate DOCX' : 'Convert to PDF'}

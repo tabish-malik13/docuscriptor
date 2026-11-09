@@ -1,23 +1,22 @@
-import { fileURLToPath } from 'node:url'
 import rateLimit from '@fastify/rate-limit'
 import { createService } from '../shared/http-service.mjs'
 import { requireSecret } from '../shared/service-authorization.mjs'
 import { registerDocumentRoutes } from './document-routes.mjs'
 import { createAuthorizers } from './authorize-document-processing.mjs'
-import { createStore } from './store.mjs'
+import { createSupabaseStore } from './supabase-store.mjs'
 import { createTenantAuthority } from './tenant-authority.mjs'
 import { organizationConfig, organizationSlugFromHost, validOrganizationSlug } from '../../shared/organization-url.mjs'
 import { registerWorkspaceSessions } from './workspace-sessions.mjs'
-import { problem } from './store.mjs'
+import { problem } from '../../shared/problems.mjs'
 import { registerTenantRoutes } from './tenant-routes.mjs'
 
 export async function buildGatewayApp({
-  storePath = process.env.DATA_PATH || fileURLToPath(new URL('../../.data/workspace.sqlite', import.meta.url)),
   docxService = process.env.DOCX_SERVICE_URL || 'http://127.0.0.1:4001',
   pdfService = process.env.PDF_SERVICE_URL || 'http://127.0.0.1:4002',
   docxSecret = process.env.DOCX_SERVICE_SECRET,
   pdfSecret = process.env.PDF_SERVICE_SECRET,
   organizationOptions = organizationConfig(process.env.APP_ORIGIN || process.env.VITE_APP_ORIGIN || 'http://127.0.0.1:5173', process.env.ORGANIZATION_BASE_DOMAIN || process.env.VITE_ORGANIZATION_BASE_DOMAIN || 'docuscriptor.localhost', process.env.ORGANIZATION_ROUTING || process.env.VITE_ORGANIZATION_ROUTING || 'subdomain'),
+  documentStore, storageOptions, processingLimit = 4, healthCheck,
   authOptions, tenantAuthority, fetchImpl = fetch, logger,
 } = {}) {
   requireSecret(docxSecret, 'DOCX_SERVICE_SECRET')
@@ -53,10 +52,13 @@ export async function buildGatewayApp({
       return reply.code(429).header('Retry-After', result.ttlInSeconds).send({ message: 'Too many requests. Try again shortly.' })
     }
   })
-  const store = createStore(storePath)
+  const store = documentStore || createSupabaseStore(storageOptions)
   app.addHook('onClose', async () => store.close())
-  app.get('/api/health', async () => ({ status: 'ok' }))
-  registerDocumentRoutes(app, { store, auth, docxService, pdfService, docxSecret, pdfSecret, fetchImpl })
+  app.get('/api/health', async (_request,reply) => {
+    if(healthCheck && !await healthCheck()) return reply.code(503).send({status:'unavailable'})
+    return {status:'ok'}
+  })
+  registerDocumentRoutes(app, { store, auth, docxService, pdfService, docxSecret, pdfSecret, fetchImpl, processingLimit })
   registerTenantRoutes(app, { store, auth, authority })
   if (organizationOptions.routing !== 'path') registerWorkspaceSessions(app, { auth, authority, organizations: organizationOptions })
   return app

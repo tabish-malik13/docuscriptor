@@ -1,3 +1,4 @@
+import { processingEnabled } from './features'
 import { ArrowRight, ArrowUpRight, FilePenLine, Plus, Sparkles } from 'lucide-react'
 import { DocumentFlowIllustration } from '../shared/DocumentFlowIllustration'
 import { ActivityTable } from './ActivityTable'
@@ -11,17 +12,17 @@ export function OverviewPage({ items, navigate, openNewDocument }: {
 }) {
   return <>
             <div className="page-heading">
-              <div><div className="overview-label"><span /> DOCUMENT WORKSPACE</div><h1>Workspace overview</h1><p>Create, convert, and manage your documents in one place.</p></div>
+              <div><div className="overview-label"><span /> DOCUMENT WORKSPACE</div><h1>Workspace overview</h1><p>{processingEnabled ? 'Create, convert, and manage your documents in one place.' : 'Edit Word documents and manage your organization’s private files.'}</p></div>
               <div className="heading-actions">
                 <a className="button secondary" href="/editor.html" target="_blank" rel="noopener"><FilePenLine size={16} /> Edit DOCX <span className="sr-only">(opens in a new tab)</span></a>
-                <button className="button primary" onClick={() => openNewDocument()}><Plus size={18} /> New document</button>
+                {processingEnabled ? <button className="button primary" onClick={() => openNewDocument()}><Plus size={18} /> New document</button> : <button className="button primary" onClick={() => navigate('activity')}><Plus size={18} /> Upload document</button>}
               </div>
             </div>
             <section className="hero" aria-labelledby="hero-title">
-              <div className="hero-content"><span className="hero-label"><Sparkles size={13} /> DOCUMENT AUTOMATION</span>
-                <h2 id="hero-title">From data to finished<br className="desktop-break" /> documents.</h2>
-                <p>Fill a Word template with your data or convert a file to PDF.</p>
-                <button className="hero-link" onClick={() => navigate('generate')}>Start generating <ArrowRight size={16} /></button>
+              <div className="hero-content"><span className="hero-label"><Sparkles size={13} /> {processingEnabled ? 'DOCUMENT AUTOMATION' : 'YOUR ORGANIZATION’S DOCUMENTS'}</span>
+                <h2 id="hero-title">{processingEnabled ? <>From data to finished<br className="desktop-break" /> documents.</> : <>Your documents.<br />One shared workspace.</>}</h2>
+                <p>{processingEnabled ? 'Fill a Word template with your data or convert a file to PDF.' : 'Create and edit DOCX files in your browser, then save them to your organization’s private library.'}</p>
+                <button className="hero-link" onClick={() => navigate(processingEnabled ? 'generate' : 'activity')}>{processingEnabled ? 'Start generating' : 'Open documents'} <ArrowRight size={16} /></button>
               </div>
               <DocumentFlowIllustration />
             </section>
@@ -33,7 +34,7 @@ export function OverviewPage({ items, navigate, openNewDocument }: {
               </div>
             </section>
             <section className="home-section activity-section" aria-labelledby="recent-activity">
-              <div className="section-heading"><div><h2 id="recent-activity">Recent activity</h2><p>Your latest document runs and exports.</p></div>
+              <div className="section-heading"><div><h2 id="recent-activity">Recent activity</h2><p>{processingEnabled ? 'Your latest document runs and exports.' : 'Your recently saved documents.'}</p></div>
                 <button className="button secondary" onClick={() => navigate('activity')}>View activity <ArrowRight size={15} /></button></div>
               <div className="panel"><ActivityTable items={items.slice(0, 3)} /></div>
             </section>

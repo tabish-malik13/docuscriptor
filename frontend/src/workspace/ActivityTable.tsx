@@ -1,3 +1,4 @@
+import { processingEnabled } from './features'
 import { useState } from 'react'
 import { ArrowDownToLine, Clock3, FileText, Trash2 } from 'lucide-react'
 import { useTenantApi } from './TenantContext'
@@ -9,7 +10,7 @@ export function ActivityTable({ items, onChange, currentUserId }: { items: Activ
   const [error, setError] = useState('')
   async function act(item: Activity, remove = false) {
     if (busy) return
-    if (remove && !window.confirm('Delete this job and its saved document?')) return
+    if (remove && !window.confirm('Delete this saved document?')) return
     setBusy(item.id); setError('')
     try {
       if (remove) { await api('/api/jobs/' + item.id, { method: 'DELETE' }); onChange?.() }
@@ -18,7 +19,7 @@ export function ActivityTable({ items, onChange, currentUserId }: { items: Activ
     finally { setBusy(null) }
   }
   if (!items.length) return <div className="empty-state"><span className="icon-chip violet"><Clock3 size={21} /></span>
-    <div><strong>No activity yet</strong><p>Your document jobs and saved downloads will appear here.</p></div>
+    <div><strong>{processingEnabled ? 'No activity yet' : 'No documents yet'}</strong><p>{processingEnabled ? 'Your document jobs and saved downloads will appear here.' : 'Upload a DOCX or PDF to share it with your organization.'}</p></div>
   </div>
   return <>
     {error && <p className="error-box" role="alert">{error}</p>}

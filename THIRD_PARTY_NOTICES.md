@@ -45,3 +45,9 @@ Tenant implementation adds no npm dependency or application container. SQL CI us
 ## Optional deployment tooling
 
 Cloudflare Pages is an optional hosting service, not an application dependency. The optional Wrangler CLI 4.158.0 is licensed MIT OR Apache-2.0 (https://github.com/cloudflare/workers-sdk); the optional cloudflared CLI is Apache-2.0 (https://github.com/cloudflare/cloudflared). These tools are not bundled in the application images or frontend assets. Their distributed packages retain upstream licenses and notices. No paid Cloudflare features are required by the preview configuration.
+
+The Pages gateway build uses esbuild 0.28.2 (MIT), already used by Vite and now pinned explicitly as build tooling. It is not shipped as an application runtime service.
+
+## Render processing profile
+
+`infra/Render.Containerfile` reuses the pinned Gotenberg image (including its LibreOffice/Chromium components and original package notices) and copies the existing Node 24 runtime from the pinned official Node image. Node’s complete bundled LICENSE is retained at `/usr/local/share/doc/docuscripter-node/LICENSE`. No new application dependency or paid module is introduced. The app remains proprietary; processing services retain their independent entry points.
