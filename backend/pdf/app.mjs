@@ -31,6 +31,9 @@ export function buildPdfApp({
     if (extension === 'docx') {
       await validateWordFile(bytes)
       form.append('files', new Blob([bytes], { type: docxType }), 'document.docx')
+      // Print Word content-control values into the page. Interactive PDF widgets
+      // can hide or clip them when LibreOffice substitutes the control's font.
+      form.append('exportFormFields', 'false')
       route = '/forms/libreoffice/convert'
     } else if (extension === 'html' || extension === 'htm') {
       try { new TextDecoder('utf-8', { fatal: true }).decode(bytes) } catch {
