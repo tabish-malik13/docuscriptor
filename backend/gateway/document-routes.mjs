@@ -1,5 +1,5 @@
 import {
-  docxSchema, docxType, pdfType, readArtifact, readUpload, sendAttachment, uploadSchema,
+  docxSchema, docxType, pdfType, readArtifact, readUpload, sendAttachment, uploadSchema, validateRuntimeValues,
 } from '../shared/document-http.mjs'
 import { InputError } from '../shared/http-service.mjs'
 import { signServiceRequest } from '../shared/service-authorization.mjs'
@@ -80,6 +80,7 @@ export function registerDocumentRoutes(app, { store, auth, docxService, pdfServi
   const write = { onRequest: auth.requireProcessing, config: { rateLimit: { max: 20 } } }
   app.post('/api/docx/generate', { ...write, schema: { body: generationSchema } }, async (request, reply) => {
     let payload = request.body
+    validateRuntimeValues(payload.values)
     let source = starterNames[payload.templateId] || payload.filename
     if (payload.savedTemplateId) {
       const saved = await scoped(request).template(request.tenantId, payload.savedTemplateId)

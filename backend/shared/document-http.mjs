@@ -19,6 +19,19 @@ export const docxSchema = {
   type: 'object',
   required: ['values'],
   additionalProperties: false,
+  $defs: {
+    runtimeValue: {
+      anyOf: [
+        { type: 'string', maxLength: 4000 },
+        { type: 'array', maxItems: 200, items: { $ref: '#/$defs/runtimeValue' } },
+        {
+          type: 'object', maxProperties: 64,
+          propertyNames: { pattern: '^[a-zA-Z][a-zA-Z0-9_]{0,63}$', not: { enum: ['constructor', 'prototype'] } },
+          additionalProperties: { $ref: '#/$defs/runtimeValue' },
+        },
+      ],
+    },
+  },
   oneOf: [
     { required: ['templateId'], not: { anyOf: [{ required: ['file'] }, { required: ['filename'] }] } },
     { required: ['filename', 'file'], not: { required: ['templateId'] } },
@@ -30,9 +43,54 @@ export const docxSchema = {
       type: 'object',
       maxProperties: 64,
       propertyNames: { pattern: '^[a-zA-Z][a-zA-Z0-9_]{0,63}$', not: { enum: ['constructor', 'prototype'] } },
-      additionalProperties: { type: 'string', maxLength: 4000 },
+      additionalProperties: { $ref: '#/$defs/runtimeValue' },
     },
   },
+}
+
+const fieldNamePattern = /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/
+
+// Runtime data can contain bounded arrays/objects for repeating DOCX sections.
+// Keep the shape small enough to validate and render predictably in both services.
+export function validateRuntimeValues(values) {
+  if (!values || typeof values !== 'object' || Array.isArray(values)) {
+    throw new InputError('Runtime values must be a JSON object.')
+  }
+  let nodes = 0
+  let arrayItems = 0
+  let textBytes = 0
+  function visit(value, depth) {
+    if (++nodes > 2048) throw new InputError('Runtime values contain too many entries.')
+    if (depth > 8) throw new InputError('Runtime values are nested too deeply.')
+    if (typeof value === 'string') {
+      textBytes += Buffer.byteLength(value)
+      if (value.length > 4000 || textBytes > 1024 * 1024) throw new InputError('Runtime text exceeds the supported size.')
+      return
+    }
+    if (Array.isArray(value)) {
+      arrayItems += value.length
+      if (value.length > 200 || arrayItems > 200) throw new InputError('Runtime arrays may contain at most 200 items in total.')
+      for (const item of value) visit(item, depth + 1)
+      return
+    }
+    if (typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+      const entries = Object.entries(value)
+      if (entries.length > 64) throw new InputError('Runtime objects may contain at most 64 fields.')
+      for (const [key, item] of entries) {
+        if (!fieldNamePattern.test(key) || key === 'constructor' || key === 'prototype') {
+          throw new InputError('Runtime field names must use letters, numbers, and underscores.')
+        }
+        visit(item, depth + 1)
+      }
+      return
+    }
+    throw new InputError('Runtime values must contain text, arrays, and objects.')
+  }
+  if (Object.getPrototypeOf(values) !== Object.prototype || Object.keys(values).length > 64) {
+    throw new InputError('Runtime values must be a JSON object with at most 64 fields.')
+  }
+  visit(values, 0)
+  return values
 }
 
 export function readUpload(input) {

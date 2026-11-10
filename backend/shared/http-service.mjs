@@ -15,7 +15,7 @@ export function createService({ logger = { level: process.env.LOG_LEVEL || 'info
   })
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof InputError) return reply.code(422).send({ message: error.message })
-    if (error.validation) return reply.code(400).send({ message: 'Check the file type and required fields. Runtime values must be text.' })
+    if (error.validation) return reply.code(400).send({ message: 'Check the file type, required fields, and runtime JSON values.' })
     if (error.publicMessage && error.statusCode >= 400 && error.statusCode <= 599) {
       return reply.code(error.statusCode).send({ message: error.publicMessage })
     }

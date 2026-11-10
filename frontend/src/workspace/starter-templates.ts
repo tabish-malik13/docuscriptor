@@ -18,5 +18,11 @@ export const templates: Template[] = [
 ]
 
 export function savedTemplate(item: SavedTemplate): Template {
-  return { ...item, category: 'SAVED TEMPLATE', tone: 'violet', description: item.fields.length ? item.fields.join(', ') : 'A Word template without runtime fields.' }
+  const groups = [...new Set(item.fields.flatMap((field) => {
+    const match = field.match(/^([A-Za-z][A-Za-z0-9_]*)\[\]/)
+    return match ? [match[1]] : []
+  }))]
+  const plain = item.fields.filter((field) => !field.includes('[]') && !groups.includes(field))
+  const description = [...plain, ...groups.map((group) => `Repeating section: ${group}`)].join(', ')
+  return { ...item, category: 'SAVED TEMPLATE', tone: 'violet', description: description || 'A Word template without runtime fields.' }
 }

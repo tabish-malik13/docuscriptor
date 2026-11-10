@@ -30,7 +30,7 @@ export function TemplatesPage({ templates, canProcess, currentUserId, onSelect, 
   return <>
     {canProcess && <form className="panel workflow-form template-upload" onSubmit={save}>
       <h2>Save a Word template</h2>
-      <p className="form-note">Upload a DOCX with fields such as {'{customer_name}'}. Saved templates are shared with members of this organization.</p>
+      <p className="form-note">Upload a DOCX with fields such as {'{customer_name}'} or {'{{customer_name}}'}. Repeating rows can use sections such as {'{{#items}}'}…{'{{/items}}'}. Saved templates are shared with members of this organization.</p>
       <fieldset disabled={busy}>
         <label className="field">Template name<input name="name" required maxLength={120} /></label>
         <label className="field">Word template<input name="file" type="file" accept=".docx" required /></label>

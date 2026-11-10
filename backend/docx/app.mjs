@@ -1,9 +1,9 @@
-import { docxSchema, docxType, maxOutputBytes, readUpload, sendAttachment, uploadSchema } from '../shared/document-http.mjs'
+import { docxSchema, docxType, maxOutputBytes, readUpload, sendAttachment, uploadSchema, validateRuntimeValues } from '../shared/document-http.mjs'
 import { createService, InputError } from '../shared/http-service.mjs'
 import { serviceAuthorization } from '../shared/service-authorization.mjs'
 import { validateWordFile } from '../shared/word-file.mjs'
 import { starterTemplate } from './starter-templates.mjs'
-import { inspectTemplate } from './template.mjs'
+import { createTemplate, inspectTemplate, validateTemplateData } from './template.mjs'
 
 export function buildDocxApp({ secret = process.env.DOCX_SERVICE_SECRET, logger } = {}) {
   const authorize = serviceAuthorization(secret, 'docx')
@@ -23,13 +23,11 @@ export function buildDocxApp({ secret = process.env.DOCX_SERVICE_SECRET, logger 
   })
   app.post('/generate', { preValidation: authorize, schema: { body: docxSchema } }, async (request, reply) => {
     const { filename, file, templateId, values } = request.body
+    validateRuntimeValues(values)
     const source = templateId ? await starterTemplate(templateId) : await sourceFile(filename, file)
-    const { document, tags, fields } = inspectTemplate(source)
-    for (const field of fields) {
-      if (!Object.hasOwn(values, field)) throw new InputError('Provide a value for {' + field + '}.')
-    }
-    const expanded = tags.reduce((total, tag) => total + Buffer.byteLength(values[tag.value]) * 6, 0)
-    if (expanded > maxOutputBytes) throw new InputError('The expanded template exceeds the output limit.')
+    const { tags } = inspectTemplate(source)
+    validateTemplateData(tags, values)
+    const document = createTemplate(source)
     let output
     try {
       document.render(values)

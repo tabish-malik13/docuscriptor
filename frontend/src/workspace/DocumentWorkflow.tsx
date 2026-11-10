@@ -8,6 +8,42 @@ import type { Template } from './starter-templates'
 
 const maxFileSize = 4 * 1024 * 1024
 
+function usesStructuredValues(template?: Template) {
+  return Boolean(template?.fields.some((field) => field.includes('[]')))
+}
+
+function structuredValueExample(fields: readonly string[]) {
+  const value: Record<string, unknown> = {}
+  const repeatedRoots = new Set(fields.flatMap((field) => {
+    const match = field.match(/^([A-Za-z][A-Za-z0-9_]*)\[\]/)
+    return match ? [match[1]] : []
+  }))
+  for (const field of fields) {
+    if (!field.includes('.') && !repeatedRoots.has(field)) value[field] = ''
+  }
+  for (const field of fields.filter((item) => item.includes('[]'))) {
+    const parts = field.split('.')
+    let scope = value
+    for (let index = 0; index < parts.length; index++) {
+      const part = parts[index]
+      const repeated = part.endsWith('[]')
+      const key = repeated ? part.slice(0, -2) : part
+      if (repeated) {
+        const rows = (scope[key] as unknown[] | undefined) ?? [{}]
+        scope[key] = rows
+        if (!rows.length) rows.push({})
+        scope = rows[0] as Record<string, unknown>
+      } else if (index === parts.length - 1) {
+        scope[key] ??= ''
+      } else {
+        scope[key] ??= {}
+        scope = scope[key] as Record<string, unknown>
+      }
+    }
+  }
+  return JSON.stringify(value, null, 2)
+}
+
 export function DocumentWorkflow({ kind, identity, selected, templates, onComplete }: {
   kind: 'DOCX' | 'PDF'
   identity: WorkspaceIdentity
@@ -35,8 +71,9 @@ export function DocumentWorkflow({ kind, identity, selected, templates, onComple
       if (!template && !file) throw new Error('Choose a source file.')
       if (file && file.size > maxFileSize) throw new Error('Choose a file that is 4 MB or smaller.')
       const input = template ? {} : { file: await encode(file!), filename: file!.name }
+      const structured = usesStructuredValues(template)
       const payload = word
-        ? { ...input, templateId: template?.saved ? undefined : template?.id, savedTemplateId: template?.saved ? template.id : undefined, values: template
+        ? { ...input, templateId: template?.saved ? undefined : template?.id, savedTemplateId: template?.saved ? template.id : undefined, values: template && !structured
           ? Object.fromEntries(template.fields.map((field) => [field, form.get(field)]))
           : JSON.parse(String(form.get('values'))) }
         : input
@@ -76,13 +113,14 @@ export function DocumentWorkflow({ kind, identity, selected, templates, onComple
             <span>{word ? 'DOCX' : 'DOCX or HTML'} · up to 4 MB</span>
             <input type="file" accept={word ? '.docx' : '.docx,.html,.htm'} onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
           </label>}
-          {word && (template
+          {word && (template && !usesStructuredValues(template)
             ? <div className="field-grid">{template.fields.map((field) => <label key={field} className="field">
               {field[0].toUpperCase() + field.slice(1).replaceAll('_', ' ')}
               <input name={field} required maxLength={4000} />
             </label>)}</div>
             : <label className="field">Runtime values
-              <textarea name="values" rows={5} required spellCheck={false} />
+              <textarea key={template?.id ?? 'upload'} name="values" rows={8} required spellCheck={false}
+                defaultValue={template ? structuredValueExample(template.fields) : undefined} />
             </label>)}
         </fieldset>
         {!identity.canProcess && <p className="form-note">Ask your administrator for document processing access.</p>}
@@ -99,7 +137,7 @@ export function DocumentWorkflow({ kind, identity, selected, templates, onComple
       <aside className="panel workflow-tip">
         <span className="label">BEFORE YOU START</span>
         <h2>{word ? 'Use template fields' : 'Prepare your source'}</h2>
-        <p>{word ? <>Add placeholders such as <code>{'{customer_name}'}</code> in your Word file. Then provide a matching value in the JSON editor.</> :
+        <p>{word ? <>Use fields such as <code>{'{customer_name}'}</code> or <code>{'{{customer_name}}'}</code>. Repeat rows with sections such as <code>{'{{#items}}'}…{'{{/items}}'}</code>, and provide arrays of objects in the JSON editor.</> :
           'Embed the images and styles your HTML needs. The converter uses the file you provide and the fonts installed on the server.'}</p>
       </aside>
     </div>
