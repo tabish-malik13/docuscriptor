@@ -33,6 +33,26 @@ For native development, run `npm run dev` after configuring `.env`. It starts th
 
 For frontend development against the running Compose stack, set `DEV_GATEWAY_URL=http://127.0.0.1:4173` in `.env`, then run `npm run dev`. Without that override, Vite proxies to a native gateway on port 4000. Native service commands are `npm run start:gateway`, `npm run start:docx`, and `npm run start:pdf`; all load the root `.env`. A native PDF adapter also needs `GOTENBERG_URL` and an authenticated Gotenberg renderer.
 
+## Deployment feature flags
+
+Set these flags to `true` or `false` in the gateway environment or root `.env`. Omitted flags default to `true` to preserve existing installations. Stripe and Razorpay each require a separate opt-in and merchant credentials. Restart the native gateway or run `docker compose up -d --no-deps --force-recreate gateway`, then reload the browser. The gateway enforces the settings and publishes the effective switches at `GET /api/features`.
+
+| Setting | What it controls |
+| --- | --- |
+| `FEATURE_AUTH` | Human workspace sign-in. Set to `false` to open the local DOCX editor directly without sign-in or access to saved organization files. Existing scoped machine credentials can still use enabled APIs. |
+| `FEATURE_API_CLIENTS` | API client provisioning, token exchange and use of issued client tokens. WhatsApp and template edits through API clients depend on this flag. |
+| `FEATURE_WHATSAPP` | Organization WhatsApp settings, inbound webhooks and message processing. Requires API clients. |
+| `FEATURE_BILLING` | Billing page, checkout, status refresh and payment webhooks. Active contract limits and previously confirmed paid terms still apply. |
+| `FEATURE_BATCHES` | Bulk generation, batch processing and archive downloads. |
+| `FEATURE_TEMPLATE_VERSIONS` | Saving revisions and accessing template version history. Existing records and pinned batch inputs are retained. |
+| `FEATURE_TEMPLATE_API_EDITS` | Allows API clients to edit existing templates through PATCH or version upload. Requires API clients and versioning. Clients with write permission can still create templates when this is off. |
+| `FEATURE_TEMPLATE_DELETION` | Deleting saved templates from the editor, organization library or API. |
+| `FEATURE_LIVE_PREVIEW` | The live Word preview beside generation fields and the gateway preview endpoint. |
+| `FEATURE_ORG_CREATION` | Self-service organization creation in DocuScripter. Existing verified memberships continue to work. |
+| `FEATURE_RATE_LIMITS` | Per-user, per-client and per-organization traffic and write budgets. Public ingress, token exchange, webhook and route-specific limits still apply. |
+
+Keep `FEATURE_AUTH=true` for signed-in workspaces. For a browser-only deployment, set `FEATURE_AUTH=false` and `FEATURE_API_CLIENTS=false`. The local editor opens, edits and downloads files on the device. To enable sign-in on a build created without identity settings, configure the Supabase public settings in the frontend build and gateway first. These flags control DocuScripter. Supabase sign-up policy and direct database access are administered in Supabase.
+
 ## Free hosted preview
 
 For a free `pages.dev` frontend with `/org/<slug>` workspaces and a temporary backend running on your computer, follow [the deployment guide](docs/deployment.md). The frontend API proxy needs a live backend tunnel; it does not run the DOCX/PDF engines itself. No domain ownership is required.

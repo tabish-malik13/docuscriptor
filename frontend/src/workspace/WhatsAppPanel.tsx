@@ -13,7 +13,8 @@ type Changes = Settings & { appSecret?: string; accessToken?: string; clientSecr
 type FormProps = { connection: Connection | null; clients: ActiveClient[]; busy: boolean; onSave: (changes: Changes) => void; onCancel: () => void }
 
 function permissionLabels(client: ActiveClient) {
-  return client.scopes.map(scope => clientPermissions[scope] ?? scope).join(' · ')
+  const labels = clientPermissions()
+  return client.scopes.filter(scope => Object.hasOwn(labels, scope)).map(scope => labels[scope]).join(' · ') || 'No enabled permissions'
 }
 
 function ConnectionForm({ connection, clients, busy, onSave, onCancel }: FormProps) {

@@ -59,7 +59,7 @@ async function gateway(app, binding, token, command) {
   return present(command, response)
 }
 
-export async function processMessage({ app, inbox, config, fetchImpl, now, tokens, isCurrent }, row) {
+export async function processMessage({ app, inbox, config, fetchImpl, now, tokens, isCurrent, templateDeletion }, row) {
   const { event, key } = row
   const binding = config.bindings.get(event.phoneNumberId + ':' + event.from)
   if (!binding || binding.tenantId !== event.tenantId || binding.clientId !== event.clientId || now() - event.time >= day) {
@@ -88,7 +88,7 @@ export async function processMessage({ app, inbox, config, fetchImpl, now, token
   let token, scope
   async function prepare() {
     let command
-    try { command = commandFor(event) } catch (error) {
+    try { command = commandFor(event, templateDeletion) } catch (error) {
       if (!(error instanceof CommandError)) throw error
       command = textReply(error.message)
     }

@@ -1,5 +1,7 @@
 # Gateway request limits
 
+`FEATURE_RATE_LIMITS=true` enables the subject, tenant and write budgets. Set it to `false` and restart the gateway to pause those budgets. The public IP, OAuth token, webhook and individual route limits apply in either mode.
+
 Set these optional environment variables on the gateway. Each budget has a one-minute window starting with its first accepted request. A request that exceeds a budget receives HTTP 429 and a `Retry-After` header with the remaining delay in seconds. Wait at least that long before retrying. A response lost during a document mutation can leave a completed job, so check the activity history before resubmitting.
 
 | Environment variable | Default | Requests counted together |

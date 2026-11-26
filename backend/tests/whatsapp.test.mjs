@@ -152,6 +152,36 @@ test('media fetches stay on Meta and stop before conversion on large files or in
   assert.ok(w.calls.every((url) => url.startsWith('https://graph.facebook.com/')))
 })
 
+test('disabling template deletion removes the WhatsApp command from help and rejects queued deletion while job deletion stays available', async t => {
+  const featureEnv = {}
+  const w = await setup(t, ['templates:write', 'templates:delete', 'documents:convert', 'documents:delete'], false, { featureEnv })
+  const text = body => w.event({ type: 'text', text: { body } })
+  const saved = w.event(attachment('save Stored template'))
+  await w.submit(saved)
+  await w.drain()
+  const id = w.deliveries.at(-1).text.body.split(' ').at(-1)
+  await w.submit(w.event(attachment('pdf')))
+  await w.drain()
+  const jobs = () => w.f.gateway.inject({ url: '/api/jobs', headers: w.owner.headers })
+  const job = (await jobs()).json().items[0]
+
+  await w.submit(text('delete template ' + id))
+  featureEnv.FEATURE_TEMPLATE_DELETION = 'false'
+  await w.restart()
+  await w.drain()
+  assert.match(w.deliveries.at(-1).text.body, /Template deletion is disabled/)
+  assert.equal((await w.f.gateway.inject({ url: '/api/templates/' + id, headers: w.owner.headers })).statusCode, 200)
+  await w.submit(text('help'))
+  await w.drain()
+  const help = w.deliveries.at(-1).text.body
+  assert.doesNotMatch(help, /delete template/i)
+  assert.match(help, /delete job ID/)
+  await w.submit(text('delete job ' + job.id))
+  await w.drain()
+  assert.equal(w.deliveries.at(-1).text.body, 'Deleted.')
+  assert.deepEqual((await jobs()).json().items, [])
+})
+
 test('failed uploads retry by saved job ID, and revoked credentials block redelivery after restart', async (t) => {
   const w = await setup(t)
   w.controls.failUpload = true

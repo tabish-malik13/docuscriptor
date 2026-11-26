@@ -1,5 +1,7 @@
 # Connect a server application
 
+The gateway must have `FEATURE_API_CLIENTS=true` to issue or accept client tokens. Editing existing templates also requires `FEATURE_TEMPLATE_API_EDITS=true` and `FEATURE_TEMPLATE_VERSIONS=true`. To let clients create templates while disabling edits to existing ones, turn off `FEATURE_TEMPLATE_API_EDITS`. [Deployment feature flags](../README.md#deployment-feature-flags)
+
 Open **Organization settings → API clients** as an owner or admin. Create a client for the integration, select its permissions, and save the client ID and one-time secret in your server's secret store. For a service that only converts files to PDF, select **Convert DOCX or HTML to PDF**. The same credential setup works for the optional [WhatsApp adapter](whatsapp.md).
 
 Use the OAuth 2.0 client credentials grant over HTTPS. Send HTTP Basic credentials to `POST /api/oauth/token` and a URL-encoded body with `grant_type=client_credentials`. An optional space-separated `scope` narrows the grant for that token. The response contains `access_token`, `token_type`, `expires_in` (900 seconds), and `scope`. Keep the token server-side and reuse it until shortly before expiry. [OAuth client credentials grant](https://www.rfc-editor.org/rfc/rfc6749#section-4.4)

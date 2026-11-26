@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ChevronRight, Download, FileText, Pin, Search, Upload, X } from 'lucide-react'
 import { DeleteTemplateButton } from '../shared/DeleteTemplateButton'
+import { features } from '../shared/features'
 import { documentFilename } from '../../../shared/document-filename.mjs'
 import { deleteSavedTemplate, encode } from './api'
 import { FilePicker } from './FilePicker'
@@ -112,7 +113,7 @@ export function TemplatesPage({ templates, canProcess, currentUserId, onSelect, 
           {pin(item)}
           <button className="icon-button" type="button" disabled={busy} title="Download template" aria-label={'Download ' + item.name}
             onClick={() => { void run(() => downloadSaved('/api/templates/' + item.id + '/download', documentFilename(item.name, 'DOCX'))) }}><Download size={16} /></button>
-          {canProcess && (item.createdBy === currentUserId || tenant.role === 'owner' || tenant.role === 'admin') &&
+          {features.templateDeletion && canProcess && (item.createdBy === currentUserId || tenant.role === 'owner' || tenant.role === 'admin') &&
             <DeleteTemplateButton name={item.name} organization={tenant.name} disabled={busy} onDelete={() => { void run(async () => {
               await deleteSavedTemplate(api, item.id)
               setNotice(item.name + ' was deleted from ' + tenant.name + '.')

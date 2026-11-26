@@ -1,5 +1,6 @@
 import { currentOrganizationSlug, workspaceConfig } from '../workspace/organization-location'
 import { installWorkspaceSession, sessionTokens } from './supabase-auth'
+import { stripeCheckoutReturn } from '../workspace/stripe-checkout-return'
 
 const pendingKey = 'docuscripter.workspace-sign-in'
 const base64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','')
@@ -21,7 +22,8 @@ export async function startWorkspaceSignIn() {
   const verifier = base64url(crypto.getRandomValues(new Uint8Array(32)))
   const challenge = base64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))))
   const state = crypto.randomUUID()
-  sessionStorage.setItem(pendingKey, JSON.stringify({ state, verifier, slug: currentOrganizationSlug, expires: Date.now() + 5 * 60_000 }))
+  const checkoutReturn = stripeCheckoutReturn(new URL(window.location.href))
+  sessionStorage.setItem(pendingKey, JSON.stringify({ state, verifier, slug: currentOrganizationSlug, expires: Date.now() + 5 * 60_000, checkoutReturn }))
   const url = new URL(workspaceConfig.appOrigin)
   url.search = new URLSearchParams({ workspace: currentOrganizationSlug, state, challenge }).toString()
   window.location.replace(url.href)
@@ -35,7 +37,7 @@ export function finishWorkspaceSignIn() {
   if (exchange) return exchange
   exchange = (async () => {
     const raw = sessionStorage.getItem(pendingKey)
-    const pending = raw ? JSON.parse(raw) as { state: string; verifier: string; slug: string; expires: number } : null
+    const pending = raw ? JSON.parse(raw) as { state: string; verifier: string; slug: string; expires: number; checkoutReturn?: unknown } : null
     if (!pending || pending.expires <= Date.now() || pending.slug !== currentOrganizationSlug || pending.state !== params.get('state')) {
       throw new Error('This workspace sign-in has expired. Return to your organizations and try again.')
     }
@@ -48,7 +50,8 @@ export function finishWorkspaceSignIn() {
     if (!response.ok) throw new Error(result.message || 'Workspace sign-in could not be completed.')
     await installWorkspaceSession(result)
     sessionStorage.removeItem(pendingKey)
-    history.replaceState(null, '', '/')
+    const returned = pending.checkoutReturn
+    history.replaceState(null, '', returned === 'success' || returned === 'cancel' ? '/?stripe_checkout=' + returned + '#billing' : '/')
   })()
   return exchange
 }

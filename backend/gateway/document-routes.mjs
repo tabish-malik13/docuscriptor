@@ -25,7 +25,7 @@ const generationSchema = {
   ],
 }
 
-export function registerDocumentRoutes(app, { store, auth, docxService, pdfService, docxSecret, pdfSecret, fetchImpl = fetch,
+export function registerDocumentRoutes(app, { store, auth, features, docxService, pdfService, docxSecret, pdfSecret, fetchImpl = fetch,
   tenantConcurrency = Number(process.env.TENANT_PROCESSING_CONCURRENCY ?? 2) }) {
   if (!Number.isInteger(tenantConcurrency) || tenantConcurrency < 1 || tenantConcurrency > 4) {
     throw new Error('TENANT_PROCESSING_CONCURRENCY must be an integer between 1 and 4.')
@@ -136,7 +136,7 @@ export function registerDocumentRoutes(app, { store, auth, docxService, pdfServi
     const { payload, name } = wordInput(request, reply)
     return generate(request, reply, 'DOCX', payload, name)
   })
-  app.post('/api/docx/preview', { ...wordRoute, config: { rateClass: 'preview', rateLimit: { max: 60 } } }, async (request, reply) => {
+  if (features.livePreview) app.post('/api/docx/preview', { ...wordRoute, config: { rateClass: 'preview', rateLimit: { max: 60 } } }, async (request, reply) => {
     return processing(request.tenantId, reply, async () => {
       const { payload } = wordInput(request, reply)
       const bytes = await render(request, 'DOCX', payload, '/preview')
@@ -148,7 +148,7 @@ export function registerDocumentRoutes(app, { store, auth, docxService, pdfServi
     readUpload(request.body.file)
     return generate(request, reply, 'PDF', request.body, request.body.filename)
   })
-  registerBatchRoutes(app, { store, auth, processing, render, finishJob, templateSource, templatePayload })
+  if (features.batches) registerBatchRoutes(app, { store, auth, processing, render, finishJob, templateSource, templatePayload })
   app.get('/api/jobs', { ...access('documents:read'), schema: { querystring: {
     type: 'object', additionalProperties: false, properties: { offset: { type: 'string', pattern: '^(0|[1-9][0-9]{0,4})$' } },
   } } }, async (request) => {
@@ -215,7 +215,7 @@ export function registerDocumentRoutes(app, { store, auth, docxService, pdfServi
   function requireTemplateAccess(request, action) {
     const saved = templateInfo(request)
     if (saved.createdBy === request.subject || adminRoles.has(request.tenantRole)) return saved
-    if (action === 'edit' && request.clientScopes?.includes(organizationTemplateEditScope)) return saved
+    if (action === 'edit' && features.templateApiEdits && request.clientScopes?.includes(organizationTemplateEditScope)) return saved
     throw problem(403, 'You do not have permission to ' + action + ' this template.')
   }
   const templateEdit = { onRequest: auth.templateEdit, preHandler: auth.recheckProcessing }
@@ -232,20 +232,20 @@ export function registerDocumentRoutes(app, { store, auth, docxService, pdfServi
       return store.reviseTemplate(request.tenantId, id, baseVersion, fields, bytes, request.subject, name?.trim())
     })
   }
-  app.patch('/api/templates/:id', { ...templateEdit, schema: {
+  if (features.templateApiEdits) app.patch('/api/templates/:id', { ...templateEdit, schema: {
     params: paramsSchema, body: { ...uploadSchema, required: ['baseVersion'],
       properties: { ...uploadSchema.properties, baseVersion: versionNumber, name: templateName },
       anyOf: [{ required: ['name'] }, { required: ['file'] }],
       dependencies: { file: ['filename'], filename: ['file'] } },
   } }, async (request, reply) => editTemplate(request, reply))
-  app.post('/api/templates/:id/versions', { ...templateEdit, schema: {
+  if (features.templateVersions) app.post('/api/templates/:id/versions', { ...templateEdit, schema: {
     params: paramsSchema, body: { ...uploadSchema, required: ['baseVersion','filename','file'],
       properties: { ...uploadSchema.properties, baseVersion: versionNumber } },
   } }, async (request, reply) => {
     const saved = await editTemplate(request, reply)
     return reply.code(201).send(saved)
   })
-  app.get('/api/templates/:id/versions', { ...access('templates:read'), schema: { params: paramsSchema } }, async (request) => {
+  if (features.templateVersions) app.get('/api/templates/:id/versions', { ...access('templates:read'), schema: { params: paramsSchema } }, async (request) => {
     const items = store.templateVersions(request.tenantId, request.params.id)
     if (!items.length) throw problem(404, 'Template not found.')
     return { items }
@@ -256,7 +256,7 @@ export function registerDocumentRoutes(app, { store, auth, docxService, pdfServi
     reply.header('X-Template-Version', String(saved.version))
     return sendAttachment(reply, Buffer.from(saved.file), docxType, documentFilename(saved.name, 'DOCX'))
   }
-  app.get('/api/templates/:id/versions/:version/download', { ...access('templates:read'), schema: { params: {
+  if (features.templateVersions) app.get('/api/templates/:id/versions/:version/download', { ...access('templates:read'), schema: { params: {
     ...paramsSchema, required: ['id','version'], properties: { id: idSchema, version: { type: 'string', pattern: '^[1-9][0-9]{0,15}$' } },
   } } }, async (request, reply) => {
     const version = Number(request.params.version)
@@ -267,7 +267,7 @@ export function registerDocumentRoutes(app, { store, auth, docxService, pdfServi
     async (request, reply) => downloadTemplate(request, reply, null))
   app.get('/api/templates/mine/:id/download', { onRequest: auth.requireTenant, schema: { params: paramsSchema } },
     async (request, reply) => downloadTemplate(request, reply, request.subject))
-  app.delete('/api/templates/:id', { ...mutate('templates:delete'), schema: { params: paramsSchema } }, async (request, reply) => {
+  if (features.templateDeletion) app.delete('/api/templates/:id', { ...mutate('templates:delete'), schema: { params: paramsSchema } }, async (request, reply) => {
     requireTemplateAccess(request, 'delete')
     if (!store.deleteTemplate(request.tenantId, request.params.id)) throw problem(404, 'Template not found.')
     return reply.code(204).send()

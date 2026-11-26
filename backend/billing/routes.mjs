@@ -8,6 +8,7 @@ export async function registerBillingRoutes(app, { auth, authority, organization
   }
   async function recheckOwner(request) {
     const role = await authority.membership(request.accessToken, request.tenantId, request.subject, request.organizationSlug)
+    auth.assertSessionActive(request.subject, request.accessToken)
     if (role !== 'owner') throw problem(403, 'Organization ownership is required to manage billing.')
   }
   const status = request => billing.describe(request.tenantId, store.billingUsage(request.tenantId))
@@ -20,6 +21,7 @@ export async function registerBillingRoutes(app, { auth, authority, organization
     const slug = request.organizationSlug || (await authority.list(request.accessToken, request.subject)).find(row => row.id === request.tenantId)?.slug
     if (!slug) throw problem(403, 'Choose an organization before starting checkout.')
     const url = new URL(organizationUrl(slug, organizations))
+    if (request.body.provider === 'stripe') url.searchParams.set('stripe_checkout', 'success')
     url.hash = 'billing'
     const result = await billing.checkout(request.tenantId, request.body.provider, request.body.plan, url.href)
     await recheckOwner(request)

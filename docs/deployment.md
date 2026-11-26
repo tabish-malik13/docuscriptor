@@ -7,7 +7,7 @@ The frontend address is `https://<actual-project>.pages.dev`, subject to availab
 ## First deployment
 
 1. Install Node 24+, Docker, and the Apache-2.0 licensed [cloudflared CLI](https://github.com/cloudflare/cloudflared). On macOS: `brew install cloudflared`.
-2. Preserve the configured root `.env`. It needs the Supabase public URL/publishable key and three distinct server secrets described in `.env.example`. Never upload `.env` or server secrets to Pages.
+2. Preserve the configured root `.env`. Set the three distinct server secrets described in `.env.example`. For human sign-in, also configure the Supabase public URL and publishable key. A deployment with `FEATURE_AUTH=false` can build and open the local editor without Supabase settings. Configure public identity settings in the frontend build before enabling sign-in later. Keep server secrets on the gateway. [Deployment feature flags](../README.md#deployment-feature-flags)
 3. Authenticate the optional MIT/Apache-2.0 licensed Wrangler CLI:
 
    ```sh

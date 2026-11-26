@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ArrowRight, ChevronRight, Plus } from 'lucide-react'
 import { ActivityTable } from './ActivityTable'
 import type { Activity } from './activity'
-import { actions, type View } from './navigation'
+import { documentActions, type View } from './navigation'
 import { TemplatePreview } from './TemplatePreview'
 import type { Template } from './starter-templates'
 
@@ -28,7 +28,7 @@ export function OverviewPage({ items, templates, pinnedIds, tenantName, canProce
     </header>
 
     {canProcess && <section className="tool-strip" aria-label="Document tools">
-      {actions.filter(action => action.view !== 'templates').map(({ view, title, text, icon: Icon }) =>
+      {documentActions().filter(action => action.view !== 'templates').map(({ view, title, text, icon: Icon }) =>
         <button key={view} onClick={() => navigate(view)}><span className={'tool-symbol tool-' + view}><Icon size={21} strokeWidth={1.65} /></span>
           <span><strong>{title}</strong><small>{text}</small></span><ChevronRight className="tool-arrow" size={15} /></button>)}
     </section>}

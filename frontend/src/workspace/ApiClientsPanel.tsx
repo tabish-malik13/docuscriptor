@@ -1,16 +1,19 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useTenantApi } from './TenantContext'
 import { workspaceConfig } from './organization-location'
+import { features } from '../shared/features'
 
-export const clientPermissions: Record<string, string> = {
-  'documents:convert': 'Convert DOCX or HTML to PDF',
-  'documents:generate': 'Generate Word documents and manage batches',
-  'documents:read': 'Read and download organization jobs',
-  'documents:delete': 'Delete jobs created by this client',
-  'templates:read': 'Read and use saved organization templates',
-  'templates:write': 'Create templates and edit templates created by this client',
-  'templates:edit:organization': 'Edit any saved template in this organization',
-  'templates:delete': 'Delete templates created by this client',
+export function clientPermissions(): Record<string, string> {
+  return {
+    'documents:convert': 'Convert DOCX or HTML to PDF',
+    'documents:generate': features.batches ? 'Generate Word documents and manage batches' : 'Generate Word documents',
+    'documents:read': 'Read and download organization jobs',
+    'documents:delete': 'Delete jobs created by this client',
+    'templates:read': 'Read and use saved organization templates',
+    'templates:write': features.templateApiEdits ? 'Create templates and edit templates created by this client' : 'Create templates',
+    ...(features.templateApiEdits && { 'templates:edit:organization': 'Edit any saved template in this organization' }),
+    ...(features.templateDeletion && { 'templates:delete': 'Delete templates created by this client' }),
+  }
 }
 export type Client = {
   id: string
@@ -33,6 +36,7 @@ export function ApiClientsPanel({ onChanged, startAdding = false }: { onChanged:
   const [offset, setOffset] = useState(0)
   const [nextOffset, setNextOffset] = useState<number | null>(null)
   const [revision, refreshList] = useState(0)
+  const permissions = clientPermissions()
 
   useEffect(() => {
     let current = true
@@ -101,9 +105,9 @@ export function ApiClientsPanel({ onChanged, startAdding = false }: { onChanged:
       {!issued && <button className="button secondary" disabled={busy} aria-expanded={adding} aria-controls="new-api-client"
         onClick={() => { setAdding(!adding); setError('') }}>{adding ? 'Close form' : 'New API client'}</button>}
     </div>
-    <p className="form-note">Give a server application or WhatsApp integration access to {tenant.name}. Choose the document operations it needs.</p>
+    <p className="form-note">Give a server application{features.whatsapp && ' or WhatsApp integration'} access to {tenant.name}. Choose the document operations it needs.</p>
     <p className="form-note">Tenant ID <code>{tenant.id}</code></p>
-    <details className="role-guide template-api-guide">
+    {features.templateApiEdits && <details className="role-guide template-api-guide">
       <summary>Edit a template through the API</summary>
       <ol>
         <li>Grant <code>templates:read</code> and <code>templates:write</code> for the client’s own templates. To edit templates saved by other people or clients, grant <code>templates:read</code> and <code>templates:edit:organization</code>.</li>
@@ -111,7 +115,7 @@ export function ApiClientsPanel({ onChanged, startAdding = false }: { onChanged:
         <li>Use the returned bearer token to call <code>GET /api/templates</code>. Use the template’s <code>id</code> and <code>version</code> to send <code>PATCH /api/templates/:id</code>.</li>
       </ol>
       <p>To rename a template, send JSON such as <code>{'{"baseVersion": 1, "name": "Service agreement"}'}</code>. To update the DOCX, send <code>baseVersion</code>, <code>filename</code> and the base64-encoded <code>file</code>. If you receive HTTP 409, fetch the latest version and review the changes before retrying.</p>
-    </details>
+    </details>}
     {error && <p className="error-box" role="alert">{error}</p>}
     {issued ? <div className="issued-client">
       <h3>Credentials for {issued.name}</h3>
@@ -122,7 +126,7 @@ export function ApiClientsPanel({ onChanged, startAdding = false }: { onChanged:
     </div> : adding && <form id="new-api-client" onSubmit={create}>
       <fieldset disabled={busy}><label className="field">Client name<input name="name" required maxLength={120} pattern=".*\S.*" /></label>
         <fieldset className="client-permissions"><legend>Permissions</legend>
-          {Object.entries(clientPermissions).map(([scope, label]) => <label key={scope}>
+          {Object.entries(permissions).map(([scope, label]) => <label key={scope}>
             <input type="checkbox" name="scope" value={scope} /><span>{label} <code>{scope}</code></span>
           </label>)}
         </fieldset>
@@ -133,7 +137,8 @@ export function ApiClientsPanel({ onChanged, startAdding = false }: { onChanged:
     {loading && !clients.length && <p role="status" className="form-note">Loading API clients…</p>}
     {!loading && !clients.length && !listError && !adding && !issued && <p className="form-note">{offset ? 'No more API clients.' : 'No API clients yet.'}</p>}
     {clients.map(client => <div className="tenant-invitation" key={client.id}>
-      <div><strong>{client.name}</strong><p><code>{client.id}</code></p><p>{client.scopes.join(' · ')}</p></div>
+      <div><strong>{client.name}</strong><p><code>{client.id}</code></p>
+        <p>{client.scopes.filter(scope => Object.hasOwn(permissions, scope)).join(' · ') || 'No enabled permissions'}</p></div>
       {client.revokedAt ? <span>Revoked</span> : <div className="row-actions">
         <button className="button secondary" disabled={busy || !!issued} onClick={() => rotate(client)}>Rotate secret</button>
         <button className="button secondary" disabled={busy} onClick={() => revoke(client)}>Revoke</button>

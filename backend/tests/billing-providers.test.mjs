@@ -17,9 +17,17 @@ const refs = { tenant_id: checkout.tenantId, attempt_id: checkout.attemptId }
 const session = { object: 'checkout.session', id: 'cs_test_123', mode: 'subscription', livemode: false, client_reference_id: checkout.attemptId,
   status: 'open', expires_at: expires, url: 'https://checkout.stripe.com/c/pay/cs_test_123#preview' }
 const subscriptionId = 'sub_123'
+const itemId = 'si_123', started = timestamp - 3600
+const paidLine = { id: 'il_123', object: 'line_item', livemode: false, invoice: 'in_123', amount: 1400, quantity: 1, quantity_decimal: '1',
+  period: { start: started, end: expires }, parent: { type: 'subscription_item_details',
+    subscription_item_details: { subscription: subscriptionId, subscription_item: itemId, proration: false } },
+  pricing: { type: 'price_details', price_details: { price: env.STRIPE_ULTIMATE_PRICE_ID } } }
+const paidInvoice = { id: 'in_123', object: 'invoice', livemode: false, status: 'paid', amount_remaining: 0,
+  parent: { type: 'subscription_details', subscription_details: { subscription: subscriptionId } },
+  lines: { has_more: false, data: [paidLine] } }
 const stripeSub = { id: subscriptionId, object: 'subscription', livemode: false, status: 'active', metadata: refs,
-  items: { has_more: false, data: [{ quantity: 1, price: { id: env.STRIPE_ULTIMATE_PRICE_ID }, current_period_end: expires }] },
-  latest_invoice: { status: 'paid' } }
+  items: { has_more: false, data: [{ id: itemId, quantity: 1, price: { id: env.STRIPE_ULTIMATE_PRICE_ID }, current_period_start: started, current_period_end: expires }] },
+  latest_invoice: paidInvoice }
 const razorSub = { id: subscriptionId, entity: 'subscription', plan_id: env.RAZORPAY_ULTIMATE_PLAN_ID, status: 'created',
   quantity: 1, paid_count: 0, total_count: 12, notes: refs, current_end: expires, expire_by: expires, short_url: 'https://rzp.io/rzp/123' }
 
@@ -65,6 +73,13 @@ test('Stripe creates a recurring checkout from server settings, with a stable re
   }
   await assert.rejects(stripe.createCheckout({ ...checkout, plan: 'price_attacker' }), /supported license/)
   assert.equal(requests.length, 2)
+  for (const workspace of ['https://org.example/', 'https://workspace.example/org/acme']) {
+    const returnUrl = workspace + '?stripe_checkout=success#billing'
+    await stripe.createCheckout({ ...checkout, returnUrl })
+    const form = new URLSearchParams(requests.at(-1).body)
+    assert.equal(form.get('success_url'), returnUrl)
+    assert.equal(form.get('cancel_url'), workspace + '?stripe_checkout=cancel#billing')
+  }
 })
 
 test('Razorpay sends the configured recurring plan and capped duration over authenticated HTTPS', async () => {
@@ -112,6 +127,8 @@ test('Stripe verifies the raw bytes, timestamp and live mode before using signed
   for (const [type, object] of [
     ['customer.subscription.updated', { object: 'subscription', id: subscriptionId }],
     ['checkout.session.completed', { object: 'checkout.session', mode: 'subscription', subscription: subscriptionId }],
+    ['checkout.session.async_payment_succeeded', { object: 'checkout.session', mode: 'subscription', subscription: subscriptionId }],
+    ['checkout.session.async_payment_failed', { object: 'checkout.session', mode: 'subscription', subscription: subscriptionId }],
     ['invoice.paid', { object: 'invoice', parent: { subscription_details: { subscription: subscriptionId } } }],
     ['invoice.payment_failed', { object: 'invoice', subscription: subscriptionId }],
   ]) {
@@ -157,6 +174,55 @@ test('canonical Stripe subscription binds the plan, tenant and paid period', asy
   snapshot = { ...stripeSub, livemode: true }
   await assert.rejects(stripe.getSubscription(subscriptionId), /provider/)
   await assert.rejects(stripe.getSubscription('../wrong'), /provider/)
+})
+
+test('a paid Stripe invoice covers only its subscription item, configured price, quantity and service period', async () => {
+  const itemParent = changes => ({ ...paidLine.parent, subscription_item_details: { ...paidLine.parent.subscription_item_details, ...changes } })
+  const invoiceFor = line => ({ ...paidInvoice, lines: { has_more: false, data: [line] } })
+  for (const invoice of [
+    { ...paidInvoice, status: 'open' }, { ...paidInvoice, livemode: true }, { ...paidInvoice, amount_remaining: 500 },
+    { ...paidInvoice, parent: { type: 'subscription_details', subscription_details: { subscription: 'sub_other' } } },
+    ...[
+      { parent: itemParent({ subscription_item: 'si_other' }) }, { parent: itemParent({ subscription: 'sub_other' }) },
+      { parent: { type: 'invoice_item_details' } }, { pricing: { type: 'price_details', price_details: { price: 'price_unknown' } } },
+      { invoice: 'in_other' }, { livemode: true }, { amount: -20 }, { amount: 0, parent: itemParent({ proration_details: { credited_items: {} } }) },
+      { quantity: 2 }, { quantity_decimal: '1.01' }, { period: { start: started, end: timestamp - 1 } },
+      { period: { start: timestamp + 1, end: expires } }, { period: { start: started - 1800, end: expires } },
+    ].map(change => invoiceFor({ ...paidLine, ...change })),
+  ]) {
+    const { stripe } = adapters(async () => Response.json({ ...stripeSub, latest_invoice: invoice }))
+    assert.equal((await stripe.getSubscription(subscriptionId)).status, 'pending')
+  }
+  const prorated = { ...paidLine, period: { start: timestamp - 30, end: expires }, parent: itemParent({ proration: true }) }
+  const { stripe } = adapters(async () => Response.json({ ...stripeSub, latest_invoice: invoiceFor(prorated) }))
+  assert.equal((await stripe.getSubscription(subscriptionId)).status, 'active')
+})
+
+test('unbilled Stripe plan changes keep the lower covered tier and paid upgrade lines may be paginated', async () => {
+  const plusLine = { ...paidLine, id: 'il_plus', pricing: { type: 'price_details', price_details: { price: env.STRIPE_PLUS_PRICE_ID } } }
+  let snapshot = { ...stripeSub, latest_invoice: { ...paidInvoice, lines: { has_more: false, data: [plusLine] } } }
+  const nextUrl = 'https://api.stripe.com/v1/invoices/in_123/lines?limit=100&starting_after=il_plus'
+  let next = { has_more: false, data: [{ ...paidLine, quantity_decimal: '1.000000' }] }, pages = 0
+  const { stripe } = adapters(async (url, init) => {
+    if (url.includes('/subscriptions/')) return Response.json(snapshot)
+    assert.equal(url, nextUrl)
+    assert.equal(init.headers.Authorization, 'Bearer ' + env.STRIPE_SECRET_KEY)
+    pages++
+    return Response.json(next)
+  })
+  async function expectActive(plan) {
+    const result = await stripe.getSubscription(subscriptionId)
+    assert.deepEqual([result.status, result.plan, result.periodEnd], ['active', plan, expires])
+  }
+  await expectActive('plus')
+  snapshot = { ...stripeSub, items: { has_more: false, data: [{ ...stripeSub.items.data[0], price: { id: env.STRIPE_PLUS_PRICE_ID } }] } }
+  await expectActive('plus')
+  assert.equal(pages, 0)
+  snapshot = { ...stripeSub, latest_invoice: { ...paidInvoice, lines: { has_more: true, data: [plusLine] } } }
+  await expectActive('ultimate')
+  assert.equal(pages, 1)
+  next = { has_more: true, data: [plusLine] }
+  await assert.rejects(stripe.getSubscription(subscriptionId), error => error.statusCode === 502)
 })
 
 test('canonical Razorpay subscription withholds access on authentication and maps paused or ended billing', async () => {

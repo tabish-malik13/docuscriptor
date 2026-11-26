@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useTenantApi, type TenantRole } from './TenantContext'
 import { ApiClientsPanel } from './ApiClientsPanel'
 import { WhatsAppPanel } from './WhatsAppPanel'
+import { features } from '../shared/features'
 
 type Member = { user_id: string; email: string; role: TenantRole }
 type Invitation = { id: string; email: string; role: string; expires_at: string }
@@ -65,7 +66,8 @@ export function TenantAccessPage() {
     {notice && <p className="success-box" role="status">{notice}</p>}
     {loading && <p role="status">Loading organization settings…</p>}
     <nav className="settings-nav" aria-label="Organization settings sections">
-      {([['people', 'People'], ['clients', 'API clients'], ['whatsapp', 'WhatsApp'], ['history', 'Access history'], ['general', 'General']] as const).map(([id, label]) =>
+      {([['people', 'People'], ['clients', 'API clients'], ['whatsapp', 'WhatsApp'], ['history', 'Access history'], ['general', 'General']] as const)
+        .filter(([id]) => (id !== 'clients' || features.apiClients) && (id !== 'whatsapp' || features.whatsapp)).map(([id, label]) =>
         <button type="button" key={id} aria-pressed={section === id} onClick={() => setSection(id)}>{label}</button>)}
     </nav>
     <div className="settings-stack" hidden={section !== 'people'}>
@@ -102,8 +104,8 @@ export function TenantAccessPage() {
         <button className="button secondary" disabled={busy} onClick={() => { void run(async () => { await api('/api/tenant/invitations/' + invitation.id, { method: 'DELETE' }) }) }}>Revoke</button>
       </div>) : <p className="form-note">No pending invitations.</p>}</section>
     </div>
-    <div hidden={section !== 'clients'}><ApiClientsPanel key={clientFormRequest} onChanged={refreshAudit} startAdding={clientFormRequest > 0} /></div>
-    {section === 'whatsapp' && <WhatsAppPanel createClient={() => { requestClientForm(value => value + 1); setSection('clients') }} />}
+    {features.apiClients && <div hidden={section !== 'clients'}><ApiClientsPanel key={clientFormRequest} onChanged={refreshAudit} startAdding={clientFormRequest > 0} /></div>}
+    {features.whatsapp && section === 'whatsapp' && <WhatsAppPanel createClient={() => { requestClientForm(value => value + 1); setSection('clients') }} />}
     <div className="settings-stack" hidden={section !== 'general'}>
       <form className="panel workflow-form" onSubmit={rename}>
         <h2>Organization details</h2>

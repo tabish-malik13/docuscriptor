@@ -9,7 +9,7 @@ const help = [
   'Generate from a template: generate ' + starterIds.join('|') + '|TEMPLATE_ID {"field":"value"}',
   'Browse: jobs [page], job ID, templates [page], fields TEMPLATE_ID',
   'Download: download ID, template ID',
-  'Delete: delete job ID, delete template ID',
+  'Delete: delete job ID',
 ].join('\n')
 export class CommandError extends Error {}
 export const textReply = (text) => ({ text })
@@ -24,7 +24,7 @@ function values(json) {
 }
 
 // Only these fixed paths can be reached from a message. Tenant, recipient and credentials come from the binding.
-export function commandFor({ text, media }) {
+export function commandFor({ text, media }, templateDeletion = true) {
   const command = text.trim()
   if (media) {
     if (command === '' || /^pdf$/i.test(command)) return {
@@ -62,9 +62,10 @@ export function commandFor({ text, media }) {
   }
   if (verb === 'delete' && ['job', 'template'].includes(noun) && validId(id) && !extra) {
     const jobs = noun === 'job'
+    if (!jobs && !templateDeletion) return textReply('Template deletion is disabled on this deployment.')
     return { method: 'DELETE', path: '/api/' + (jobs ? 'jobs' : 'templates') + '/' + id, result: 'deleted', scope: jobs ? 'documents:delete' : 'templates:delete' }
   }
-  return textReply(help)
+  return textReply(templateDeletion ? help + ', delete template ID' : help)
 }
 
 export function downloadCommand(collection, id) {

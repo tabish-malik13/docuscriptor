@@ -8,9 +8,9 @@ import { DatabaseSync } from 'node:sqlite'
 import Fastify from 'fastify'
 import { rateLimitOptions, rateLimitTrustedProxies, registerGatewayRateLimits } from '../gateway/rate-limits.mjs'
 
-function gateway(t, { options, now, storePath = ':memory:', trustProxy = false } = {}) {
+function gateway(t, { options, now, storePath = ':memory:', trustProxy = false, workspaceLimits } = {}) {
   const app = Fastify({ trustProxy })
-  registerGatewayRateLimits(app, { storePath, options, now })
+  registerGatewayRateLimits(app, { storePath, options, now, workspaceLimits })
   const credentials = new Map()
   const accepted = async (request) => {
     const identity = credentials.get(request.headers.authorization)
@@ -70,6 +70,19 @@ test('live document previews have their own cap and leave the mutation budget av
   assert.equal((await post('/api/docx/preview')).statusCode, 429)
   assert.equal((await post('/api/convert')).statusCode, 200)
   assert.equal((await post('/api/convert')).statusCode, 429)
+})
+
+test('disabling workspace quotas preserves route and token exchange limits', async t => {
+  const { app, credential } = gateway(t, { workspaceLimits: false, options: {
+    subject: 1, tenant: 1, write: 1, tenantWrite: 1, token: 1,
+  } })
+  const headers = credential()
+  for (const url of ['/api/convert', '/api/convert', '/api/upload']) {
+    assert.equal((await app.inject({ method: 'POST', url, headers })).statusCode, 200)
+  }
+  for (const url of ['/api/token', '/api/docx/preview']) {
+    for (const expected of [200, 429]) assert.equal((await app.inject({ method: 'POST', url, headers })).statusCode, expected)
+  }
 })
 
 test('source, token, webhook and health traffic have independent admission', async (t) => {

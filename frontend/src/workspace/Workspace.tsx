@@ -11,7 +11,7 @@ import { BillingPage } from './BillingPage'
 import { DocumentWorkflow } from './DocumentWorkflow'
 import { OverviewPage } from './OverviewPage'
 import type { Activity } from './activity'
-import { actions, readView, views, type View } from './navigation'
+import { documentActions, readView, viewEnabled, views, type View } from './navigation'
 import { templates as starters, savedTemplate, type SavedTemplate, type Template } from './starter-templates'
 import { roleLabels, useTenantApi } from './TenantContext'
 import { TenantAccessPage } from './TenantAccessPage'
@@ -140,6 +140,7 @@ export function Workspace({ identity: user }: { identity: Identity }) {
   }, [view])
 
   function go(next: View, template?: Template) {
+    if (!viewEnabled(next)) return
     setSelected(template)
     setView(next)
     setSidebar(false)
@@ -149,6 +150,7 @@ export function Workspace({ identity: user }: { identity: Identity }) {
   }
 
   function nav(next: View) {
+    if (!viewEnabled(next)) return null
     const Icon = views[next].icon
     return <a className={'nav-item' + (view === next ? ' active' : '')} aria-current={view === next ? 'page' : undefined}
       key={next} href={'#' + next} onClick={event => {
@@ -158,7 +160,7 @@ export function Workspace({ identity: user }: { identity: Identity }) {
       }}><Icon size={18} strokeWidth={1.65} /><span>{views[next].title}</span></a>
   }
 
-  const pages = (Object.keys(views) as View[]).filter(entry => (entry !== 'team' || canAdmin) && (entry !== 'billing' || tenant.role === 'owner') &&
+  const pages = (Object.keys(views) as View[]).filter(entry => viewEnabled(entry) && (entry !== 'team' || canAdmin) && (entry !== 'billing' || tenant.role === 'owner') &&
     (identity.canProcess || !['generate', 'convert', 'batches'].includes(entry)))
   const term = query.trim().toLowerCase()
   const matches = pages.filter(entry => views[entry].title.toLowerCase().includes(term))
@@ -191,7 +193,7 @@ export function Workspace({ identity: user }: { identity: Identity }) {
     templates: 'Browse starter layouts and the Word templates saved by your organization.',
     activity: 'Review the documents processed in this organization.',
     account: 'Review your identity and the permissions assigned to your organization membership.',
-    team: 'Manage organization members, API clients, WhatsApp and access history.',
+    team: 'Manage organization members, settings and access history.',
     billing: 'Review your organization’s license and subscription options.',
   }
 
@@ -274,7 +276,7 @@ export function Workspace({ identity: user }: { identity: Identity }) {
               {templateMatches.length > 0 && <h3>Templates</h3>}
               {templateMatches.map(item => <button key={item.id} onClick={() => go(identity.canProcess ? 'generate' : 'templates', item)}><FileText size={17} />{item.name}<ChevronRight size={15} /></button>)}
               {!matches.length && !templateMatches.length && <p>No matching pages or templates.</p>}</div></>}
-          {dialog === 'new' && <div className="dialog-list">{actions.map(({ view: target, title, icon: Icon }) => <button key={target} onClick={() => go(target)}><Icon size={19} /> {title}<ChevronRight size={16} /></button>)}</div>}
+          {dialog === 'new' && <div className="dialog-list">{documentActions().map(({ view: target, title, icon: Icon }) => <button key={target} onClick={() => go(target)}><Icon size={19} /> {title}<ChevronRight size={16} /></button>)}</div>}
           {dialog === 'notifications' && <div className="dialog-list">{items.length
             ? items.slice(0, 4).map((item) => <button key={item.id} onClick={() => go('activity')}><FileText size={18} /> {item.name}: {item.status === 'ready' ? 'ready' : item.status === 'failed' ? 'failed' : 'processing'} <ChevronRight size={16} /></button>)
             : <p>You’re all caught up.</p>}</div>}

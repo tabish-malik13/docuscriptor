@@ -84,7 +84,7 @@ function pollEverySecond(work) {
 
 export async function registerWhatsApp(app, {
   configPath = process.env.WHATSAPP_CONFIG_FILE, legacyConfig = loadWhatsAppConfig(configPath), connections,
-  storePath, resolveClientToken, fetchImpl = fetch, now = Date.now, schedule = pollEverySecond,
+  storePath, resolveClientToken, templateDeletion = true, fetchImpl = fetch, now = Date.now, schedule = pollEverySecond,
 } = {}) {
   if (!legacyConfig && !connections) return
   if (connections?.legacySigningConflict) app.log.warn('The deployment WhatsApp callback requires a dedicated Meta app signing secret.')
@@ -109,7 +109,7 @@ export async function registerWhatsApp(app, {
           continue
         }
         const isCurrent = () => !connectionId || connections.getById(connectionId)?.revision === revision
-        await processMessage({ app, inbox, config, fetchImpl, now, tokens, isCurrent }, row)
+        await processMessage({ app, inbox, config, fetchImpl, now, tokens, isCurrent, templateDeletion }, row)
       }
     })()
     try { await running } finally { running = undefined }

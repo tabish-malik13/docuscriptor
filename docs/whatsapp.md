@@ -4,6 +4,8 @@ An enrolled sender can message a business number, attach a Word file, and receiv
 
 ## Connect an organization from the workspace
 
+Enable `FEATURE_WHATSAPP` and `FEATURE_API_CLIENTS` in the gateway. Disabling either suspends the webhook and removes WhatsApp settings from the workspace. Saved connections are available again when both flags are enabled. [Deployment feature flags](../README.md#deployment-feature-flags)
+
 An owner or administrator can configure one WhatsApp Business number in **Organization settings → WhatsApp**. Changes apply as soon as they are saved. Use this flow when an organization manages its own Meta app and business number.
 
 1. Under **Organization settings → API clients**, create a client for this connection and copy its one-time secret. For a number that only converts Word files to PDF, select **Convert DOCX or HTML to PDF**. The command table below lists the scopes for other actions.

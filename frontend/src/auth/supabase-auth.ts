@@ -1,13 +1,21 @@
 import { createClient, type Session, type User } from '@supabase/supabase-js'
 import { workspaceConfig } from '../workspace/organization-location'
+import { features } from '../shared/features'
 
 export type Identity = { id: string; name: string; email: string }
 export type WorkspaceIdentity = Identity & { role: string; canProcess: boolean }
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
-const auth = url && key ? createClient(url, key, { auth: { detectSessionInUrl: true, flowType: 'pkce' } }).auth : null
-export const authConfigured = auth !== null
+let auth: ReturnType<typeof createClient>['auth'] | null = null
+export let authConfigured = false
+
+export function initializeAuth() {
+  if (features.auth && url && key && !auth) {
+    auth = createClient(url, key, { auth: { detectSessionInUrl: true, flowType: 'pkce' } }).auth
+    authConfigured = true
+  }
+}
 
 function readIdentity(user: User): Identity | null {
   if (user.is_anonymous || user.aud !== 'authenticated' || !user.email_confirmed_at) return null

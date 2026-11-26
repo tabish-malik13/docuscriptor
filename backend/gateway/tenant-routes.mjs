@@ -6,12 +6,12 @@ const params = { type: 'object', required: ['id'], additionalProperties: false, 
 const name = { type: 'string', minLength: 1, maxLength: 120, pattern: '\\S' }
 const roles = ['owner', 'admin', 'operator', 'viewer']
 
-export function registerTenantRoutes(app, { auth, authority, store }) {
+export function registerTenantRoutes(app, { auth, authority, store, features }) {
   const account = { onRequest: auth.requireIdentity }
   const tenant = { onRequest: auth.requireTenant }
   const admin = { onRequest: auth.requireAdmin }
   app.get('/api/organizations', account, async (request) => ({ items: await authority.list(request.accessToken, request.subject) }))
-  app.post('/api/organizations', { ...account, config: { rateLimit: { max: 10 } }, schema: { body: {
+  if (features.orgCreation) app.post('/api/organizations', { ...account, config: { rateLimit: { max: 10 } }, schema: { body: {
     type: 'object', required: ['name','slug'], additionalProperties: false, properties: { name, slug: { type: 'string', pattern: organizationSlugPattern, not: { enum: [...reservedSlugs] } } },
   } } }, async (request, reply) => reply.code(201).send(await authority.create(request.accessToken, request.body.name, request.body.slug)))
   app.patch('/api/tenant', { ...admin, schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name } } } }, async (request, reply) => {

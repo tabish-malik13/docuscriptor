@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { processingRoles, adminRoles, uuidPattern } from './tenant-authority.mjs'
 import { clientScopes, credentialDigest, isAccessToken, matchesClientTenant, organizationTemplateEditScope } from './client-credentials.mjs'
 import { problem } from './store.mjs'
+import { gatewayFeatures } from './features.mjs'
 
 // Called only after Supabase has verified this token and its subject.
 // Refreshed Supabase JWTs retain their session_id. Older opaque credentials
@@ -24,22 +25,24 @@ export function createAuthorizers({
   fetchImpl = fetch,
   resolveTenant,
   store,
+  features = gatewayFeatures(),
   requireOrganizationSlug = false,
 } = {}) {
-  if (publishableKey && !/^sb_publishable_[A-Za-z0-9_-]+$/.test(publishableKey)) {
+  if (features.auth && publishableKey && !/^sb_publishable_[A-Za-z0-9_-]+$/.test(publishableKey)) {
     throw new Error('SUPABASE_PUBLISHABLE_KEY must be a Supabase publishable key.')
   }
-  if (supabaseUrl) {
+  if (features.auth && supabaseUrl) {
     const url = new URL(supabaseUrl)
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== '/') {
       throw new Error('SUPABASE_URL must be the Supabase project origin.')
     }
   }
-  const userEndpoint = supabaseUrl ? new URL('/auth/v1/user', supabaseUrl) : null
+  const userEndpoint = features.auth && supabaseUrl ? new URL('/auth/v1/user', supabaseUrl) : null
   function assertSessionActive(subject, token) {
     if (store.sessionEnded(sessionDigest(subject, token))) throw problem(401, 'Your session has ended. Sign in again.')
   }
   async function verifiedIdentity(request, reply, allowEndedSession = false) {
+    if (!features.auth) throw problem(403, 'Workspace sign-in is disabled on this deployment.')
     const header = request.headers.authorization || ''
     const token = header.length <= 8199 && /^Bearer ([A-Za-z0-9._~+/-]+=*)$/i.exec(header)?.[1]
     if (!token || /^(dsa_|dss_)/i.test(token)) {
@@ -111,6 +114,7 @@ export function createAuthorizers({
     return async (request, reply) => {
       const match = /^Bearer (dsa_[^ ]*)$/i.exec(request.headers.authorization || '')
       if (!match) return (readOnly ? requireTenant : requireProcessing)(request, reply)
+      if (!features.apiClients) throw problem(403, 'API client access is disabled on this deployment.')
       const token = match[1]
       const client = isAccessToken(token) && store.resolveClientToken(credentialDigest(token))
       if (!client) return reply.code(401).header('WWW-Authenticate', 'Bearer error="invalid_token"').send({ message: 'The API access token is invalid or expired.' })
@@ -127,7 +131,9 @@ export function createAuthorizers({
     }
   }
   const documentAccess = (scope) => scopedDocumentAccess([scope], scope.endsWith(':read'))
-  const templateEdit = scopedDocumentAccess(['templates:write', organizationTemplateEditScope], false)
+  // The editor also uses the version endpoint. It remains available to verified humans
+  // while an empty scope list denies every machine token before the upload is read.
+  const templateEdit = scopedDocumentAccess(features.templateApiEdits ? ['templates:write', organizationTemplateEditScope] : [], false)
   const documentDownload = scopedDocumentAccess(['documents:read', 'documents:generate', 'documents:convert'], true)
   async function recheckProcessing(request) {
     if (request.clientScopes) {

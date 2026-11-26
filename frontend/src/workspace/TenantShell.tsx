@@ -8,6 +8,7 @@ import { api, WorkspaceRequestError } from './api'
 import { roleLabels, TenantProvider, type Tenant } from './TenantContext'
 import { currentOrganizationSlug, workspaceConfig, workspaceUrl } from './organization-location'
 import { Workspace } from './Workspace'
+import { features } from '../shared/features'
 import './directory.css'
 
 type Invitation = { id: string; tenant_id: string; tenant_name: string; email: string; role: string; expires_at: string }
@@ -106,14 +107,16 @@ export function OrganizationShell({ identity }: { identity: Identity }) {
   }
 
   const firstOrganization = !loading && (creating || !error) && organizations.length === 0 && invitations.length === 0
-  const showCreation = !returningTo && (creating || firstOrganization)
+  const showCreation = features.orgCreation && !returningTo && (creating || firstOrganization)
   return <div className="account-directory">
     <header className="directory-masthead"><Brand /><div className="directory-user"><span>{identity.name}</span>
       <button className="button secondary" disabled={busy} onClick={() => { void run(signOut) }}><LogOut size={15} aria-hidden="true" />Sign out</button></div></header>
     <main className="directory-body" aria-labelledby="directory-title">
       <div className="directory-heading"><div><h1 id="directory-title" ref={heading} tabIndex={-1}>Your organizations</h1>
-        <p>{firstOrganization ? 'Create a workspace for your team’s documents.' : 'Choose a workspace to open its documents and templates.'}</p></div>
-        {!returningTo && !showCreation && <button className="button primary" disabled={busy || loading} onClick={() => setCreating(true)}><Plus size={16} aria-hidden="true" />Create organization</button>}
+        <p>{firstOrganization
+          ? (features.orgCreation ? 'Create a workspace for your team’s documents.' : 'Ask an organization administrator to invite you to a workspace.')
+          : 'Choose a workspace to open its documents and templates.'}</p></div>
+        {features.orgCreation && !returningTo && !showCreation && <button className="button primary" disabled={busy || loading} onClick={() => setCreating(true)}><Plus size={16} aria-hidden="true" />Create organization</button>}
       </div>
       {loading && <p className="directory-status" role="status"><LoaderCircle size={17} className="spin" aria-hidden="true" />Loading your organizations…</p>}
       {error && <div className="error-box directory-error" role="alert"><p>{error}</p><button className="button secondary" disabled={busy} onClick={changed}>Try again</button>

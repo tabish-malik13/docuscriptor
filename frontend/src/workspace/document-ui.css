@@ -34,6 +34,7 @@
 .output-file svg { color: #496789; }
 .output-details p, .document-empty p, .library-empty p { font-size: 13px; line-height: 1.55; color: var(--muted); }
 .document-workflow.generate-workflow { grid-template-columns: minmax(265px, .92fr) minmax(0, 1.58fr); }
+.document-workflow.form-only-workflow { grid-template-columns: minmax(0, 1fr); }
 .generate-workflow .workflow-form { container-type: inline-size; }
 @container (max-width: 390px) {
   .generate-workflow .field-grid { grid-template-columns: minmax(0, 1fr); }

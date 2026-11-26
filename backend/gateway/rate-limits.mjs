@@ -105,7 +105,7 @@ function createCounters(path) {
   }
 }
 
-export function registerGatewayRateLimits(app, { storePath, options = {}, now = Date.now }) {
+export function registerGatewayRateLimits(app, { storePath, options = {}, now = Date.now, workspaceLimits = true }) {
   const limits = { ...rateLimitOptions(), ...options }
   for (const [key, value] of Object.entries(limits)) {
     if (!Object.hasOwn(policies, key) || !Number.isSafeInteger(value) || value < 1) throw new Error('Invalid rate limit: ' + key)
@@ -133,11 +133,11 @@ export function registerGatewayRateLimits(app, { storePath, options = {}, now = 
     const tenant = request.tenantId
     const write = request.routeOptions.config?.rateClass !== 'preview' && !['GET','HEAD','OPTIONS'].includes(request.method)
     const budgets = []
-    if (actor) {
+    if (workspaceLimits && actor) {
       budgets.push(bucket(limits.subject, 'subject', tenant, actor))
       if (write) budgets.push(bucket(limits.write, 'write', tenant, actor))
     }
-    if (tenant && actor) {
+    if (workspaceLimits && tenant && actor) {
       budgets.push(bucket(limits.tenant, 'tenant', tenant))
       if (write) budgets.push(bucket(limits.tenantWrite, 'tenantWrite', tenant))
     }

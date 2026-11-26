@@ -1,4 +1,5 @@
 import { Clock3, CreditCard, Files, FileOutput, FilePlus2, LayoutDashboard, LayoutTemplate, ShieldCheck } from 'lucide-react'
+import { features } from '../shared/features'
 
 export const views = {
   overview: { title: 'Overview', icon: LayoutDashboard },
@@ -13,14 +14,22 @@ export const views = {
 }
 export type View = keyof typeof views
 
-export const actions = [
+const actions = [
   { view: 'generate', title: 'Generate DOCX', text: 'Fill a Word template', icon: FilePlus2 },
   { view: 'convert', title: 'Convert to PDF', text: 'From Word or HTML', icon: FileOutput },
   { view: 'batches', title: 'Bulk generation', text: 'From a spreadsheet', icon: Files },
   { view: 'templates', title: 'Browse templates', text: 'Get started with ready-to-use layouts.', icon: LayoutTemplate },
 ] as const
 
+export function viewEnabled(view: View) {
+  return (view !== 'batches' || features.batches) && (view !== 'billing' || features.billing)
+}
+
+export function documentActions() {
+  return actions.filter(action => viewEnabled(action.view))
+}
+
 export function readView(): View {
   const view = window.location.hash.slice(1)
-  return Object.hasOwn(views, view) ? view as View : 'overview'
+  return Object.hasOwn(views, view) && viewEnabled(view as View) ? view as View : 'overview'
 }

@@ -7,6 +7,7 @@ import { readArtifact } from '../shared/document-http.mjs'
 const subscriptionIdPattern = /^sub_[A-Za-z0-9]{1,240}$/
 const stripeSessionPattern = /^cs_(?:test|live)_[A-Za-z0-9]{1,235}$/
 const stripeVersion = '2026-11-18.endive'
+const stripeCheckoutEvents = new Set(['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'checkout.session.async_payment_failed'])
 const stripeSubscriptionEvents = new Set(['customer.subscription.created', 'customer.subscription.updated',
   'customer.subscription.deleted', 'customer.subscription.paused', 'customer.subscription.resumed'])
 const razorpaySubscriptionEvents = new Set(['subscription.authenticated', 'subscription.activated', 'subscription.charged',
@@ -107,6 +108,42 @@ function stripeProvider(env, fetchImpl, now) {
   const prices = planMap(setting(env, 'STRIPE_PLUS_PRICE_ID', priceId), setting(env, 'STRIPE_ULTIMATE_PRICE_ID', priceId))
   const headers = { Authorization: 'Bearer ' + key, 'Stripe-Version': stripeVersion }
   const api = 'https://api.stripe.com/v1'
+  function oneUnit(item) {
+    return item?.quantity === 1 && (item.quantity_decimal == null || /^1(?:\.0+)?$/.test(item.quantity_decimal))
+  }
+  async function paidPlanForInvoice(invoice, subscriptionId, item, currentPlan) {
+    const currentTime = Math.floor(now() / 1000)
+    const periodStart = unixSeconds(item.current_period_start), periodEnd = unixSeconds(item.current_period_end)
+    if (!periodStart || periodStart > currentTime || !periodEnd || periodEnd <= currentTime ||
+      !item.id || invoice?.object !== 'invoice' || invoice.livemode !== live || invoice.status !== 'paid' ||
+      invoice.amount_remaining !== 0 || invoice.parent?.type !== 'subscription_details' ||
+      objectId(invoice.parent.subscription_details?.subscription) !== subscriptionId) return null
+
+    let page = invoice.lines, priorPlan = null
+    const seen = new Set()
+    for (;;) {
+      if (!Array.isArray(page?.data) || typeof page.has_more !== 'boolean') throw providerFailure()
+      for (const line of page.data) {
+        const details = line?.parent?.subscription_item_details
+        const start = unixSeconds(line?.period?.start)
+        if (line?.object !== 'line_item' || line.livemode !== live || line.parent?.type !== 'subscription_item_details' ||
+          objectId(details?.subscription_item) !== item.id || (details.subscription != null && objectId(details.subscription) !== subscriptionId) ||
+          (line.invoice != null && objectId(line.invoice) !== invoice.id) || !Number.isSafeInteger(line.amount) || line.amount < 0 ||
+          details.proration_details?.credited_items || !oneUnit(line) ||
+          !start || start < periodStart || start > currentTime || line.period.end !== periodEnd || line.pricing?.type !== 'price_details') continue
+        const paidPlan = planFor(prices, objectId(line.pricing.price_details?.price))
+        if (paidPlan === currentPlan) return currentPlan
+        // A paid Plus line covers Plus during a pending upgrade. A paid Ultimate line also covers a requested downgrade to Plus.
+        if (paidPlan) priorPlan = 'plus'
+      }
+      if (!page.has_more) return priorPlan
+      const cursor = page.data.at(-1)?.id
+      if (typeof cursor !== 'string' || !cursor || seen.has(cursor)) throw providerFailure()
+      seen.add(cursor)
+      const id = checkedId(invoice.id, /^in_[A-Za-z0-9]{1,240}$/)
+      page = await providerJson(fetchImpl, api + '/invoices/' + id + '/lines?' + new URLSearchParams({ limit: '100', starting_after: cursor }), { headers })
+    }
+  }
   function checkSession(session, expectedId) {
     checkedId(session?.id, stripeSessionPattern)
     if (session.object !== 'checkout.session' || session.livemode !== live || !session.id.startsWith(live ? 'cs_live_' : 'cs_test_') || session.mode !== 'subscription' ||
@@ -114,8 +151,11 @@ function stripeProvider(env, fetchImpl, now) {
   }
   return {
     async createCheckout({ tenantId, plan, attemptId, returnUrl }) {
+      const cancelUrl = new URL(returnUrl)
+      // Persisted pre-upgrade attempts must replay Stripe's exact original parameters.
+      if (cancelUrl.searchParams.get('stripe_checkout') === 'success') cancelUrl.searchParams.set('stripe_checkout', 'cancel')
       const body = new URLSearchParams({
-        mode: 'subscription', success_url: returnUrl, cancel_url: returnUrl,
+        mode: 'subscription', success_url: returnUrl, cancel_url: cancelUrl.href,
         'line_items[0][price]': planId(prices, plan), 'line_items[0][quantity]': '1', client_reference_id: attemptId,
         'subscription_data[metadata][tenant_id]': tenantId, 'subscription_data[metadata][attempt_id]': attemptId,
       })
@@ -148,7 +188,7 @@ function stripeProvider(env, fetchImpl, now) {
       const entity = event.data?.object
       let id
       if (stripeSubscriptionEvents.has(event.type) && entity?.object === 'subscription') id = entity.id
-      else if (event.type === 'checkout.session.completed' && entity?.object === 'checkout.session' && entity.mode === 'subscription') id = objectId(entity.subscription)
+      else if (stripeCheckoutEvents.has(event.type) && entity?.object === 'checkout.session' && entity.mode === 'subscription') id = objectId(entity.subscription)
       else if (['invoice.paid', 'invoice.payment_failed'].includes(event.type) && entity?.object === 'invoice') {
         // Webhook endpoints can be configured for older API versions.
         id = objectId(entity.parent?.subscription_details?.subscription ?? entity.subscription)
@@ -162,12 +202,15 @@ function stripeProvider(env, fetchImpl, now) {
       const sub = await providerJson(fetchImpl, api + '/subscriptions/' + id + '?expand%5B%5D=latest_invoice', { headers })
       if (sub?.object !== 'subscription' || sub.id !== id || sub.livemode !== live) throw providerFailure()
       const items = sub.items?.data
-      const item = Array.isArray(items) && items.length === 1 && !sub.items.has_more && items[0]?.quantity === 1 ? items[0] : null
-      const plan = planFor(prices, objectId(item?.price))
+      const item = Array.isArray(items) && items.length === 1 && !sub.items.has_more && oneUnit(items[0]) ? items[0] : null
+      let plan = planFor(prices, objectId(item?.price))
       let status = 'pending'
       if (['canceled', 'incomplete_expired'].includes(sub.status)) status = 'canceled'
       else if (['past_due', 'unpaid', 'paused'].includes(sub.status) || sub.pause_collection) status = 'past_due'
-      else if (sub.status === 'active' && sub.latest_invoice?.status === 'paid') status = 'active'
+      else if (sub.status === 'active' && plan) {
+        const paidPlan = await paidPlanForInvoice(sub.latest_invoice, id, item, plan)
+        if (paidPlan) { plan = paidPlan; status = 'active' }
+      }
       return { subscriptionId: id, ...association(sub.metadata), plan, status, periodEnd: unixSeconds(item?.current_period_end) }
     },
   }

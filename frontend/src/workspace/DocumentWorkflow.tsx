@@ -3,6 +3,7 @@ import { CheckCircle2, Download, FileDown, FileText, LoaderCircle } from 'lucide
 import type { WorkspaceIdentity } from '../auth/supabase-auth'
 import { documentFilename } from '../../../shared/document-filename.mjs'
 import { download } from '../shared/download'
+import { features } from '../shared/features'
 import { encode } from './api'
 import { FilePicker } from './FilePicker'
 import { LiveDocxPreview } from './LiveDocxPreview'
@@ -38,6 +39,7 @@ export function DocumentWorkflow({ kind, identity, selected, templates, onComple
   const [result, setResult] = useState<{ id: string; name: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const word = kind === 'DOCX'
+  const preview = word && features.livePreview
   const currentTemplate = word ? templates.find(entry => entry.id === chosenTemplate?.id) : undefined
   // A background library refresh must not switch the revision under a partially filled form.
   const template = currentTemplate ? chosenTemplate : undefined
@@ -90,7 +92,7 @@ export function DocumentWorkflow({ kind, identity, selected, templates, onComple
   }
 
   return (
-    <div className={word ? 'document-workflow generate-workflow' : 'document-workflow'}>
+    <div className={'document-workflow' + (preview ? ' generate-workflow' : word ? ' form-only-workflow' : '')}>
       <form className="panel workflow-form" onSubmit={submit}>
         <div className="workflow-section-title"><h2>{word ? 'Source and fields' : 'Source file'}</h2></div>
         <fieldset disabled={busy || !identity.canProcess}>
@@ -103,7 +105,7 @@ export function DocumentWorkflow({ kind, identity, selected, templates, onComple
               {templates.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </label>}
-          {currentTemplate?.version && version && currentTemplate.version > version && <div className="form-note">
+          {features.templateVersions && currentTemplate?.version && version && currentTemplate.version > version && <div className="form-note">
             This draft uses version {version}.{' '}
             <button className="button secondary" type="button" onClick={() => {
               setChosenTemplate(currentTemplate)
@@ -144,8 +146,9 @@ export function DocumentWorkflow({ kind, identity, selected, templates, onComple
           </button>
         </div>
       </form>
-      {word ? <LiveDocxPreview key={template ? template.id + '/' + (version ?? '') : 'upload/' + uploadChoice}
-        available={identity.canProcess && !!(template || file)} render={renderPreview} /> : <aside className="panel output-summary">
+      {preview && <LiveDocxPreview key={template ? template.id + '/' + (version ?? '') : 'upload/' + uploadChoice}
+        available={identity.canProcess && !!(template || file)} render={renderPreview} />}
+      {!word && <aside className="panel output-summary">
         <div className="output-details"><h2>Output</h2>
           <div className="output-file"><FileText aria-hidden="true" size={19} /><strong>PDF document</strong></div>
           <p>The finished file downloads automatically. You can get another copy from Activity.</p>

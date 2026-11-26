@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUpRight, Check, CreditCard, FileStack, HardDrive, Layers, RefreshCw } from 'lucide-react'
 import { useTenantApi } from './TenantContext'
+import { stripeCheckoutReturn } from './stripe-checkout-return'
 import './billing.css'
 
 type Plan = 'plus' | 'ultimate'
@@ -33,6 +34,10 @@ const capacities = [
 const numberFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 })
 const dateFormat = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 
+function statusProviderFor(billing: Billing) {
+  return billing.pending?.provider ?? (billing.subscription?.status !== 'canceled' ? billing.subscription?.provider : null)
+}
+
 function displayCapacity(key: keyof Capacity, value: number) {
   if (key !== 'storageBytes') return numberFormat.format(value)
   const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
@@ -48,6 +53,7 @@ export function BillingPage() {
   const [retry, setRetry] = useState(0)
   const [planChoice, setPlanChoice] = useState<Plan>('plus')
   const [providerChoice, setProviderChoice] = useState<Provider>('stripe')
+  const [checkoutReturn] = useState(() => stripeCheckoutReturn(new URL(window.location.href)))
   const operation = useRef<AbortController | null>(null)
   const version = useRef(0)
 
@@ -56,10 +62,29 @@ export function BillingPage() {
     const controller = new AbortController()
     const current = ++version.current
     setError('')
-    api('/api/billing', { signal: controller.signal }).then(response => response.json()).then((result: Billing) => {
-      if (!controller.signal.aborted && current === version.current && !operation.current) setBilling(result)
-    }).catch(cause => {
-      if (!controller.signal.aborted && current === version.current && !operation.current) setError(cause instanceof Error ? cause.message : 'Billing details could not be loaded.')
+    const isCurrent = () => !controller.signal.aborted && current === version.current && !operation.current
+    async function load() {
+      const { signal } = controller
+      let result: Billing = await (await api('/api/billing', { signal })).json()
+      if (!isCurrent()) return
+      const url = new URL(window.location.href)
+      const returned = stripeCheckoutReturn(url)
+      if (returned === 'success' && result.providers.stripe && statusProviderFor(result) === 'stripe') {
+        try {
+          result = await (await api('/api/billing/refresh', { method: 'POST', body: '{}', signal })).json()
+        } catch (cause) {
+          if (isCurrent()) setError(cause instanceof Error ? cause.message : 'Stripe payment status could not be checked. Try again.')
+        }
+      }
+      if (!isCurrent()) return
+      if (returned && window.location.href === url.href) {
+        url.searchParams.delete('stripe_checkout')
+        history.replaceState(history.state, '', url)
+      }
+      setBilling(result)
+    }
+    void load().catch(cause => {
+      if (isCurrent()) setError(cause instanceof Error ? cause.message : 'Billing details could not be loaded.')
     })
     return () => controller.abort()
   }, [api, retry])
@@ -103,7 +128,7 @@ export function BillingPage() {
   }
 
   if (!billing) return error ? <div className="error-box" role="alert">{error} <button type="button" className="button secondary" onClick={() => setRetry(value => value + 1)}>Retry</button></div>
-    : <p role="status" className="form-note">Loading billing details…</p>
+    : <p role="status" className="form-note">{checkoutReturn === 'success' ? 'Checking your Stripe payment…' : 'Loading billing details…'}</p>
 
   const available = providers.filter(id => billing.providers[id])
   const provider = billing.pending?.provider ?? (available.includes(providerChoice) ? providerChoice : available[0])
@@ -111,7 +136,7 @@ export function BillingPage() {
   const canSelect = billing.canCheckout && !billing.pending
   const canContinue = billing.canCheckout && provider && billing.providers[provider] && !busy
   const latest = billing.subscription
-  const statusProvider = billing.pending?.provider ?? (latest && latest.status !== 'canceled' ? latest.provider : null)
+  const statusProvider = statusProviderFor(billing)
   const providerUnavailable = statusProvider && !billing.providers[statusProvider]
   return <div className="billing-page" aria-busy={!!busy}>
     <section aria-labelledby="license-heading" className="panel billing-license">
@@ -136,6 +161,9 @@ export function BillingPage() {
     <section aria-labelledby="payment-heading" className="panel billing-payment">
       <div className="billing-payment-title"><CreditCard size={19} aria-hidden="true" /><h2 id="payment-heading">Payment</h2></div>
       <p className="billing-payment-note">{providerUnavailable ? 'Ask your deployment administrator to reconnect ' + providerNames[statusProvider] + ' to check the status of your existing ' + (billing.pending ? 'checkout.' : 'subscription.')
+        : checkoutReturn === 'cancel' && billing.pending?.provider === 'stripe' ? 'You left Stripe Checkout. You can resume this checkout when you are ready.'
+        : checkoutReturn === 'success' && statusProvider === 'stripe' && !error && (billing.pending || latest?.status === 'pending') ? 'Payment confirmation is pending. Check payment status again shortly.'
+        : checkoutReturn === 'success' && billing.source === 'subscription' && latest?.provider === 'stripe' && !error ? 'Your ' + planNames[billing.plan] + ' subscription is active.'
         : billing.pending ? 'A ' + planNames[plan] + ' checkout with ' + providerNames[billing.pending.provider] + ' is pending. Check its status after payment.'
         : billing.source === 'contract' ? 'Your organization has a contract license. Contact your account administrator for billing changes.'
         : billing.mode === 'self-hosted' ? 'Checkout with Stripe or Razorpay is disabled for this self-hosted workspace.'

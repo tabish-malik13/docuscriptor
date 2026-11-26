@@ -6,6 +6,7 @@ import { authConfigured } from '../auth/supabase-auth'
 import { Brand } from '../shared/Brand'
 import { DeleteTemplateButton } from '../shared/DeleteTemplateButton'
 import { download } from '../shared/download'
+import { features } from '../shared/features'
 import { useEditorLibrary } from './useEditorLibrary'
 import { TemplateVersionsDialog } from './TemplateVersionsDialog'
 
@@ -199,7 +200,7 @@ export function DocxEditorPage() {
       if (scopeKey !== currentScope.current || editor.current !== handle) return
       setOpened({ ...opened, filename: withExtension(saved.name), template: { id: saved.id, version: saved.version }, scopeKey })
       if (handle.getDocumentHandle()?.revision === revision) setDirty(false)
-      setStatus('Version ' + saved.version + ' saved')
+      setStatus(features.templateVersions ? 'Version ' + saved.version + ' saved' : 'Template saved')
       setError('')
       setNamingScope(null)
     } catch (cause) {
@@ -214,10 +215,11 @@ export function DocxEditorPage() {
   }
 
   const currentTemplate = opened.template ? library.items.find(item => item.id === opened.template?.id) : undefined
-  const newerVersion = opened.template && currentTemplate && currentTemplate.version > opened.template.version ? currentTemplate : null
+  const newerVersion = features.templateVersions && opened.template && currentTemplate && currentTemplate.version > opened.template.version ? currentTemplate : null
+  const canSaveVersion = features.templateVersions && !!opened.template
   function save() {
     if (!library.canSave) { void exportDocx(); return }
-    if (!opened.template) { askForName(); return }
+    if (!canSaveVersion) { askForName(); return }
     if (hasUnsavedEdits.current && !newerVersion) void saveTemplate(withoutExtension(opened.filename), true)
   }
 
@@ -230,26 +232,27 @@ export function DocxEditorPage() {
   return <div className="local-editor">
     <header className="editor-topbar">
       <div className="editor-heading">
-        <a className="editor-brand-link" href={library.workspaceHref} aria-label="DocuScripter workspace"><Brand /></a>
+        {features.auth ? <a className="editor-brand-link" href={library.workspaceHref} aria-label="DocuScripter workspace"><Brand /></a> : <Brand />}
         <div className="editor-title"><div className="editor-document-heading"><h1>Template editor</h1>
-          {opened.template && <button type="button" className="editor-version-link" aria-label={'Version history, editing version ' + opened.template.version}
+          {features.templateVersions && opened.template && <button type="button" className="editor-version-link" aria-label={'Version history, editing version ' + opened.template.version}
             title="Version history" disabled={busy} onClick={() => setShowHistory(true)}><History size={14} aria-hidden="true" />Version {opened.template.version}</button>}
         </div>
           {dirty ? <span className="editor-dirty">Unsaved edits</span> : status && <span role="status"><Check size={12} aria-hidden="true" />{status}</span>}
         </div>
       </div>
       <div className="editor-actions">
+        {!features.auth && <button className="button secondary" type="button" onClick={newBlank} disabled={busy}><FilePlus2 size={16} aria-hidden="true" />New blank</button>}
         <button className="button secondary editor-open-file" title="Open DOCX" aria-label="Open DOCX" onClick={() => picker.current?.click()} disabled={busy}><FolderOpen size={16} aria-hidden="true" /><span>Open DOCX</span></button>
         <button className={'button ' + (library.canSave ? 'secondary' : 'primary')} disabled={busy || !ready} onClick={() => { void exportDocx() }}><Download size={16} aria-hidden="true" />Download DOCX</button>
-        {library.canSave && opened.template && <button type="button" className="button secondary editor-copy" aria-label="Save a copy" title="Save a copy" disabled={busy || !ready}
+        {library.canSave && canSaveVersion && <button type="button" className="button secondary editor-copy" aria-label="Save a copy" title="Save a copy" disabled={busy || !ready}
           onClick={askForName}><Copy size={15} aria-hidden="true" /><span>Save a copy</span></button>}
-        {library.canSave && <button className="button primary" disabled={busy || !ready || (!!opened.template && (!dirty || !!newerVersion))} onClick={save}>
-          <Save size={16} aria-hidden="true" />{opened.template ? 'Save version' : 'Save template'}</button>}
+        {library.canSave && <button className="button primary" disabled={busy || !ready || (canSaveVersion && (!dirty || !!newerVersion))} onClick={save}>
+          <Save size={16} aria-hidden="true" />{canSaveVersion ? 'Save version' : opened.template ? 'Save a copy' : 'Save template'}</button>}
       </div>
       <input ref={picker} type="file" accept=".docx" hidden onChange={openFile} />
     </header>
-    <div className="editor-layout">
-      <aside className={'editor-library' + (libraryExpanded ? ' is-expanded' : '')} aria-labelledby="editor-library-title">
+    <div className={'editor-layout' + (features.auth ? '' : ' editor-layout-local')}>
+      {features.auth && <aside className={'editor-library' + (libraryExpanded ? ' is-expanded' : '')} aria-labelledby="editor-library-title">
         <div className="editor-library-header">
           <div className="editor-library-heading"><Library size={18} aria-hidden="true" /><h2 id="editor-library-title">My templates</h2></div>
           <button type="button" className="editor-library-toggle" aria-controls="editor-library-body" aria-expanded={libraryExpanded}
@@ -271,7 +274,7 @@ export function DocxEditorPage() {
             <a href={library.workspaceHref} target="_blank" rel="noopener">Sign in<ArrowUpRight size={14} aria-hidden="true" /><span className="sr-only"> (opens in a new tab)</span></a>
           </div> : <p className="editor-library-note">Workspace sign-in is unavailable on this installation. You can edit and download a DOCX here.</p>)}
           {library.status === 'no-workspace' && <div className="editor-library-note">
-            <p>Join or create a workspace to save templates.</p>
+            <p>{features.orgCreation ? 'Join or create a workspace to save templates.' : 'Join a workspace to save templates.'}</p>
             <a href={library.workspaceHref} target="_blank" rel="noopener">Open workspace<ArrowUpRight size={14} aria-hidden="true" /><span className="sr-only"> (opens in a new tab)</span></a>
           </div>}
           {library.status === 'error' && <div className="editor-library-note"><p role="alert">{library.error}</p><button onClick={library.retry}>Try again</button></div>}
@@ -280,13 +283,13 @@ export function DocxEditorPage() {
                 <button type="button" disabled={busy} aria-current={opened.template?.id === item.id ? 'true' : undefined} onClick={() => { void openTemplate(item) }}>
                   <FileText size={17} aria-hidden="true" /><span><strong>{item.name}</strong>{Number.isFinite(item.created) && <small>{dateFormat.format(item.created)}</small>}</span>
                 </button>
-                {library.canSave && organization && <DeleteTemplateButton name={item.name} organization={organization.name}
+                {features.templateDeletion && library.canSave && organization && <DeleteTemplateButton name={item.name} organization={organization.name}
                   disabled={busy} onDelete={() => { void deleteTemplate(item.id) }} />}
               </li>)}</ul>
             : <div className="editor-library-empty"><Files size={21} strokeWidth={1.6} aria-hidden="true" /><strong>No saved templates yet</strong>
                 {library.canSave && <p>Save a document as a template to find it here.</p>}</div>)}
         </div>
-      </aside>
+      </aside>}
       <main className="editor-main" aria-label="Word document">
         {error && <p className="editor-feedback" role="alert">{error}</p>}
         {newerVersion && <div className="editor-newer-version" role="status">

@@ -94,7 +94,7 @@ export async function fixture(t, options = {}) {
     return new Response(result.rawPayload, { status: result.statusCode, headers: result.headers })
   }
   const gatewayOptions = { storePath: join(dir, 'workspace.sqlite'), docxService: 'http://docx.invalid', pdfService: 'http://pdf.invalid', docxSecret, pdfSecret, authOptions, tenantAuthority, fetchImpl, logger: false,
-    whatsappOptions: options.whatsappOptions || { configPath: null }, billingOptions: options.billingOptions,
+    whatsappOptions: options.whatsappOptions || { configPath: null }, billingOptions: options.billingOptions, featureEnv: options.featureEnv ?? {},
     ...(options.organizationOptions ? { organizationOptions: options.organizationOptions } : {}) }
   let gateway = await buildGatewayApp(gatewayOptions)
   t.after(async () => { await gateway.close(); await docx.close(); await pdf.close() })

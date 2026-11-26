@@ -8,8 +8,10 @@ if (existsSync('.env')) loadEnvFile('.env')
 const origin = process.env.PUBLIC_APP_ORIGIN
 if (!origin) throw new Error('Set PUBLIC_APP_ORIGIN to your actual https://<project>.pages.dev address.')
 const config = organizationConfig(origin, new URL(origin).hostname, 'path')
-if (!process.env.VITE_SUPABASE_URL || !process.env.VITE_SUPABASE_PUBLISHABLE_KEY) throw new Error('Configure the Supabase public URL and publishable key before building Pages.')
-const supabaseOrigin = new URL(process.env.VITE_SUPABASE_URL).origin
+if (process.env.FEATURE_AUTH !== 'false' && (!process.env.VITE_SUPABASE_URL || !process.env.VITE_SUPABASE_PUBLISHABLE_KEY)) {
+  throw new Error('Configure the Supabase public URL and publishable key, or set FEATURE_AUTH=false for a local-editor deployment.')
+}
+const supabaseOrigin = process.env.VITE_SUPABASE_URL ? new URL(process.env.VITE_SUPABASE_URL).origin : ''
 const result = spawnSync('npm', ['run','build'], { stdio: 'inherit', env: { ...process.env,
   VITE_APP_ORIGIN: config.appOrigin, VITE_ORGANIZATION_BASE_DOMAIN: config.baseDomain, VITE_ORGANIZATION_ROUTING: 'path',
 } })

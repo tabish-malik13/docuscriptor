@@ -22,6 +22,7 @@
 .editor-actions { gap: 8px; }
 .editor-actions .button { white-space: nowrap; }
 .editor-layout { display: grid; grid-template-columns: clamp(210px, 19vw, 264px) minmax(0, 1fr); flex: 1; min-height: 0; }
+.editor-layout-local { grid-template-columns: minmax(0, 1fr); }
 .editor-library { display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-right: 1px solid var(--border); background: #fafafb; }
 .editor-library-header { display: flex; align-items: center; justify-content: space-between; padding: 24px 20px 17px; }
 .editor-library-heading { gap: 9px; }

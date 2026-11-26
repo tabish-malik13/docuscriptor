@@ -83,7 +83,7 @@ test('one hosted checkout covers concurrent requests; conflicting plans and prov
     assert.equal(r.json().url, 'https://test.invalid/checkout')
   }
   assert.equal(state.creates.length, 1)
-  assert.ok(state.creates[0].returnUrl.endsWith('/#billing'))
+  assert.ok(state.creates[0].returnUrl.endsWith('/?stripe_checkout=success#billing'))
   assert.equal((await checkout(f, owner, 'stripe', 'ultimate')).statusCode, 409)
   await f.restart()
   assert.equal((await checkout(f, owner)).statusCode, 200)
