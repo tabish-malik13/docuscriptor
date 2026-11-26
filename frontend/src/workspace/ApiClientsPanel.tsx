@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useTenantApi } from './TenantContext'
+import { workspaceConfig } from './organization-location'
 
 export const clientPermissions: Record<string, string> = {
   'documents:convert': 'Convert DOCX or HTML to PDF',
@@ -7,7 +8,8 @@ export const clientPermissions: Record<string, string> = {
   'documents:read': 'Read and download organization jobs',
   'documents:delete': 'Delete jobs created by this client',
   'templates:read': 'Read and use saved organization templates',
-  'templates:write': 'Save templates',
+  'templates:write': 'Create templates and edit templates created by this client',
+  'templates:edit:organization': 'Edit any saved template in this organization',
   'templates:delete': 'Delete templates created by this client',
 }
 export type Client = {
@@ -101,6 +103,15 @@ export function ApiClientsPanel({ onChanged, startAdding = false }: { onChanged:
     </div>
     <p className="form-note">Give a server application or WhatsApp integration access to {tenant.name}. Choose the document operations it needs.</p>
     <p className="form-note">Tenant ID <code>{tenant.id}</code></p>
+    <details className="role-guide template-api-guide">
+      <summary>Edit a template through the API</summary>
+      <ol>
+        <li>Grant <code>templates:read</code> and <code>templates:write</code> for the client’s own templates. To edit templates saved by other people or clients, grant <code>templates:read</code> and <code>templates:edit:organization</code>.</li>
+        <li>From your server, call <code>POST {workspaceConfig.appOrigin}/api/oauth/token</code> with the client ID and secret as HTTP Basic credentials. Send <code>grant_type=client_credentials</code> as URL-encoded form data.</li>
+        <li>Use the returned bearer token to call <code>GET /api/templates</code>. Use the template’s <code>id</code> and <code>version</code> to send <code>PATCH /api/templates/:id</code>.</li>
+      </ol>
+      <p>To rename a template, send JSON such as <code>{'{"baseVersion": 1, "name": "Service agreement"}'}</code>. To update the DOCX, send <code>baseVersion</code>, <code>filename</code> and the base64-encoded <code>file</code>. If you receive HTTP 409, fetch the latest version and review the changes before retrying.</p>
+    </details>
     {error && <p className="error-box" role="alert">{error}</p>}
     {issued ? <div className="issued-client">
       <h3>Credentials for {issued.name}</h3>
@@ -112,7 +123,7 @@ export function ApiClientsPanel({ onChanged, startAdding = false }: { onChanged:
       <fieldset disabled={busy}><label className="field">Client name<input name="name" required maxLength={120} pattern=".*\S.*" /></label>
         <fieldset className="client-permissions"><legend>Permissions</legend>
           {Object.entries(clientPermissions).map(([scope, label]) => <label key={scope}>
-            <input type="checkbox" name="scope" value={scope} /> {label}
+            <input type="checkbox" name="scope" value={scope} /><span>{label} <code>{scope}</code></span>
           </label>)}
         </fieldset>
         <button className="button primary">Create client</button>

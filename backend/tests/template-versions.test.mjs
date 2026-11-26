@@ -19,6 +19,73 @@ async function create(f, person, bytes) {
   return response.json().id
 }
 
+test('PATCH renames and replaces a template while preserving the reviewed versions across restarts', async t => {
+  const f = await fixture(t), creator = f.principal(), viewer = f.principal('viewer', creator.tenantId)
+  const admin = f.principal('admin', creator.tenantId), colleague = f.principal('operator', creator.tenantId)
+  const first = await starterTemplate('invoice'), second = await starterTemplate('letter')
+  const id = await create(f, creator, first), path = '/api/templates/' + id
+  const initial = await request(f, viewer, 'GET', path)
+  assert.equal(initial.statusCode, 200)
+  assert.ok(initial.json().fields.includes('customer_name'))
+  assert.equal(initial.json().name, 'Saved layout')
+  assert.equal(initial.json().file, undefined)
+  const rename = { baseVersion: 1, name: '  Billing  ' }
+  for (const person of [colleague, viewer]) {
+    assert.equal((await request(f, person, 'PATCH', path, rename)).statusCode, 403)
+  }
+  const renamed = await request(f, creator, 'PATCH', path, rename)
+  assert.equal(renamed.statusCode, 200, renamed.body)
+  assert.equal(renamed.json().name, 'Billing')
+  assert.equal(renamed.json().version, 2)
+  assert.deepEqual(renamed.json().fields, initial.json().fields)
+  const sameName = await request(f, creator, 'PATCH', path, { ...rename, baseVersion: 2 })
+  assert.equal(sameName.statusCode, 200, sameName.body)
+  assert.equal(sameName.json().version, 2)
+  assert.equal((await request(f, creator, 'PATCH', path, rename)).statusCode, 409)
+  const revised = await request(f, admin, 'PATCH', path, { baseVersion: 2, name: 'Letter', ...upload(second) })
+  assert.equal(revised.statusCode, 200, revised.body)
+  assert.equal(revised.json().id, id)
+  assert.equal(revised.json().version, 3)
+  assert.ok(revised.json().fields.includes('sender_name'))
+  await f.restart()
+  const info = (await request(f, viewer, 'GET', path)).json()
+  assert.equal(info.name, 'Letter')
+  assert.equal(info.version, 3)
+  assert.equal(info.createdBy, creator.user.id)
+  assert.deepEqual(info.fields, revised.json().fields)
+  assert.equal(info.file, undefined)
+  for (const [version, name, bytes] of [[1, 'Saved layout', first], [2, 'Billing', first], [3, 'Letter', second]]) {
+    const download = await request(f, viewer, 'GET', path + '/versions/' + version + '/download')
+    assert.equal(download.statusCode, 200)
+    assert.equal(download.headers['x-template-version'], String(version))
+    assert.ok(download.headers['content-disposition'].includes('filename="' + name + '.docx"'))
+    assert.deepEqual(download.rawPayload, bytes)
+  }
+})
+
+test('PATCH requires a version and a valid change and rolls back a name if its DOCX is invalid', async t => {
+  const f = await fixture(t), creator = f.principal()
+  const first = await starterTemplate('invoice'), next = await starterTemplate('letter')
+  const id = await create(f, creator, first), path = '/api/templates/' + id
+  const incomplete = [
+    { baseVersion: 1 }, { name: 'New label' }, { baseVersion: 0, name: 'New label' },
+    { baseVersion: 1, name: '   ' }, { baseVersion: 1, filename: 'layout.docx' },
+    { baseVersion: 1, name: 'New label', file: next.toString('base64') },
+  ]
+  for (const payload of incomplete) {
+    assert.equal((await request(f, creator, 'PATCH', path, payload)).statusCode, 400)
+  }
+  const invalidFile = { baseVersion: 1, name: 'Invalid replacement', ...upload(Buffer.from('invalid file')) }
+  assert.equal((await request(f, creator, 'PATCH', path, invalidFile)).statusCode, 422)
+  const previous = (await request(f, creator, 'GET', path)).json()
+  assert.equal(previous.version, 1)
+  assert.equal(previous.name, 'Saved layout')
+  const fileOnly = await request(f, creator, 'PATCH', path, { baseVersion: 1, ...upload(next) })
+  assert.equal(fileOnly.statusCode, 200, fileOnly.body)
+  assert.equal(fileOnly.json().name, previous.name)
+  assert.equal(fileOnly.json().version, 2)
+})
+
 test('revisions preserve the same template, enforce write ownership, and return the exact version with each download', async t => {
   const f = await fixture(t), creator = f.principal(), admin = f.principal('admin', creator.tenantId)
   const colleague = f.principal('operator', creator.tenantId), viewer = f.principal('viewer', creator.tenantId), outside = f.principal('owner')

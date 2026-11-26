@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { fixture, invoiceValues } from './helpers.mjs'
 import { clientScopes, credentialDigest } from '../gateway/client-credentials.mjs'
+import { starterTemplate } from '../docx/starter-templates.mjs'
 
 const collection = '/api/tenant/clients'
 const generation = { templateId: 'invoice', values: invoiceValues() }
@@ -18,6 +19,83 @@ const exchange = (f, client, form = 'grant_type=client_credentials', extra = {})
   payload: form,
 })
 const bearer = (token) => ({ authorization: 'Bearer ' + token })
+
+async function tokenForScopes(f, client, scopes) {
+  const response = await exchange(f, client, new URLSearchParams({
+    grant_type: 'client_credentials', scope: scopes.join(' '),
+  }).toString())
+  assert.equal(response.statusCode, 200)
+  return bearer(response.json().access_token)
+}
+
+test('organization edit scope can revise a member’s template without granting read, create, or delete', async t => {
+  const f = await fixture(t), owner = f.principal('owner'), otherOwner = f.principal('owner')
+  const organizationEdit = 'templates:edit:organization'
+  const grant = await provision(f, owner.headers, [organizationEdit, 'templates:read', 'templates:delete', 'templates:write'])
+  assert.equal(grant.statusCode, 201)
+  const client = grant.json()
+  const editor = await tokenForScopes(f, client, [organizationEdit])
+  const writer = await tokenForScopes(f, client, ['templates:write'])
+  const reader = await tokenForScopes(f, client, ['templates:read'])
+  const editorWithDelete = await tokenForScopes(f, client, [organizationEdit, 'templates:delete'])
+  const upload = { filename: 'invoice.docx', file: (await starterTemplate('invoice')).toString('base64') }
+  const replacement = { filename: 'letter.docx', file: (await starterTemplate('letter')).toString('base64') }
+  async function create(headers) {
+    return f.gateway.inject({ headers, method: 'POST', url: '/api/templates', payload: { ...upload, name: 'Invoice' } })
+  }
+  const created = await create(owner.headers), outside = await create(otherOwner.headers), own = await create(writer)
+  for (const response of [created, outside, own]) assert.equal(response.statusCode, 201)
+  const url = '/api/templates/' + created.json().id
+  const rename = (headers, path = url) => f.gateway.inject({ method: 'PATCH', headers, url: path, payload: { baseVersion: 1, name: 'Sales invoice' } })
+  const revision = (headers, baseVersion) => f.gateway.inject({
+    method: 'POST', headers, url: url + '/versions', payload: { baseVersion, ...replacement },
+  })
+  assert.equal((await f.gateway.inject({ url })).statusCode, 401)
+  assert.equal((await rename({})).statusCode, 401)
+  assert.equal((await create(editor)).statusCode, 403)
+  assert.equal((await f.gateway.inject({ url, headers: editor })).statusCode, 403)
+  assert.equal((await rename(reader)).statusCode, 403)
+  assert.equal((await rename(writer)).statusCode, 403)
+  assert.equal((await revision(writer, 1)).statusCode, 403)
+  assert.equal((await rename(writer, '/api/templates/' + own.json().id)).statusCode, 200)
+  assert.equal((await rename(editor, '/api/templates/' + outside.json().id)).statusCode, 404)
+  assert.equal((await f.gateway.inject({ url: '/api/templates/' + outside.json().id, headers: reader })).statusCode, 404)
+  assert.equal((await rename({ ...editor, 'x-tenant-id': otherOwner.tenantId })).statusCode, 403)
+  assert.equal((await rename(editor)).statusCode, 200)
+  assert.equal((await revision(editor, 2)).statusCode, 201)
+  const metadata = await f.gateway.inject({ url, headers: reader })
+  assert.equal(metadata.statusCode, 200)
+  assert.equal(metadata.json().version, 3)
+  assert.equal(metadata.json().createdBy, owner.user.id)
+  const history = await f.gateway.inject({ url: url + '/versions', headers: reader })
+  assert.deepEqual(history.json().items.map(v => v.createdBy), ['client:' + client.id, 'client:' + client.id, owner.user.id])
+  for (const headers of [editor, editorWithDelete]) {
+    assert.equal((await f.gateway.inject({ url, method: 'DELETE', headers })).statusCode, 403)
+  }
+})
+
+test('revoking an organization editor during DOCX inspection cancels its pending rename and replacement', async t => {
+  const options = {}, f = await fixture(t, options), owner = f.principal('owner')
+  const grant = await provision(f, owner.headers, ['templates:edit:organization'])
+  assert.equal(grant.statusCode, 201)
+  const client = grant.json(), headers = await tokenForScopes(f, client, ['templates:edit:organization'])
+  const file = (await starterTemplate('invoice')).toString('base64')
+  const created = await f.gateway.inject({ method: 'POST', url: '/api/templates', headers: owner.headers,
+    payload: { name: 'Invoice', filename: 'invoice.docx', file } })
+  assert.equal(created.statusCode, 201)
+  const url = '/api/templates/' + created.json().id
+  options.onServiceResult = async () => {
+    const revoked = await f.gateway.inject({ method: 'DELETE', url: collection + '/' + client.id, headers: owner.headers })
+    assert.equal(revoked.statusCode, 204)
+  }
+  const attempted = await f.gateway.inject({ method: 'PATCH', url, headers,
+    payload: { baseVersion: 1, name: 'Letter', filename: 'letter.docx', file: (await starterTemplate('letter')).toString('base64') } })
+  assert.equal(attempted.statusCode, 401)
+  const current = await f.gateway.inject({ url, headers: owner.headers })
+  assert.equal(current.json().name, 'Invoice')
+  assert.equal(current.json().version, 1)
+  assert.deepEqual(current.json().fields, created.json().fields)
+})
 
 test('only workspace administrators can manage client secrets and access the credential inventory', async (t) => {
   const f = await fixture(t), owner = f.principal('owner'), other = f.principal('owner')

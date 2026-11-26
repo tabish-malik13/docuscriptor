@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { processingRoles, adminRoles, uuidPattern } from './tenant-authority.mjs'
-import { clientScopes, credentialDigest, isAccessToken, matchesClientTenant } from './client-credentials.mjs'
+import { clientScopes, credentialDigest, isAccessToken, matchesClientTenant, organizationTemplateEditScope } from './client-credentials.mjs'
 import { problem } from './store.mjs'
 
 // Called only after Supabase has verified this token and its subject.
@@ -127,6 +127,7 @@ export function createAuthorizers({
     }
   }
   const documentAccess = (scope) => scopedDocumentAccess([scope], scope.endsWith(':read'))
+  const templateEdit = scopedDocumentAccess(['templates:write', organizationTemplateEditScope], false)
   const documentDownload = scopedDocumentAccess(['documents:read', 'documents:generate', 'documents:convert'], true)
   async function recheckProcessing(request) {
     if (request.clientScopes) {
@@ -141,6 +142,6 @@ export function createAuthorizers({
     if (!processingRoles.has(role)) throw problem(403, 'Your tenant processing permission has changed.')
     request.tenantRole = role
   }
-  return { requireIdentity, requireSignOutIdentity, requireTenant, requireProcessing, requireAdmin, documentAccess, documentDownload, recheckProcessing,
+  return { requireIdentity, requireSignOutIdentity, requireTenant, requireProcessing, requireAdmin, documentAccess, documentDownload, templateEdit, recheckProcessing,
     assertSessionActive, endSession: request => store.endSession(sessionDigest(request.subject, request.accessToken)) }
 }

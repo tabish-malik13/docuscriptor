@@ -18,7 +18,7 @@ export function createStore(path, { quotaBytes, limitsForTenant = () => defaultW
   }
   const db = new DatabaseSync(path)
   if (path !== ':memory:') chmodSync(path, 0o600)
-  if (db.prepare('PRAGMA user_version').get().user_version > 6) {
+  if (db.prepare('PRAGMA user_version').get().user_version > 7) {
     db.close()
     throw new Error('This database was created by a newer DocuScripter version.')
   }
@@ -103,11 +103,19 @@ export function createStore(path, { quotaBytes, limitsForTenant = () => defaultW
     CREATE TABLE IF NOT EXISTS signed_out_sessions (digest BLOB PRIMARY KEY) STRICT, WITHOUT ROWID;
     PRAGMA user_version=6;
     COMMIT;`)
+  // Names were immutable before v7, so each historical version has its template's current name.
+  if (version < 7) db.exec(`BEGIN IMMEDIATE;
+    ALTER TABLE template_versions ADD COLUMN name TEXT NOT NULL DEFAULT '';
+    UPDATE template_versions SET name=(SELECT name FROM templates WHERE id=template_versions.template_id);
+    PRAGMA user_version=7;
+    COMMIT;`)
   const endedSession = db.prepare('SELECT 1 FROM signed_out_sessions WHERE digest=?')
   const endSession = db.prepare('INSERT OR IGNORE INTO signed_out_sessions(digest) VALUES(?)')
   // The finish trigger also fails any interrupted batch row and clears its pending data.
   db.prepare("UPDATE jobs SET status='failed', error='Processing was interrupted. Submit the document again.' WHERE status='processing'").run()
   const jobColumns = 'id, owner AS createdBy, name, kind, source, created AS "when", status, error'
+  const templateColumns = 'id,name,fields,created,owner AS createdBy,version'
+  const templateRecord = row => ({ ...row, fields: JSON.parse(row.fields), saved: true })
   const clientColumns = `id, name, scopes, created_at AS createdAt, created_by AS createdBy,
     rotated_at AS rotatedAt, rotated_by AS rotatedBy, revoked_at AS revokedAt, revoked_by AS revokedBy`
   const clientRecord = (row) => ({ ...row, scopes: JSON.parse(row.scopes) })
@@ -251,28 +259,29 @@ export function createStore(path, { quotaBytes, limitsForTenant = () => defaultW
       return db.prepare('DELETE FROM jobs WHERE tenant_id=? AND id=?').run(tenantId, id).changes > 0
     },
     listTemplates(tenantId, creator = null) {
-      return db.prepare(`SELECT id,name,fields,created,owner AS createdBy,version FROM templates
+      return db.prepare(`SELECT ${templateColumns} FROM templates
         WHERE tenant_id=$tenantId AND ($creator IS NULL OR owner=$creator) ORDER BY created DESC, id DESC`)
         .all({ tenantId, creator })
-        .map((row) => ({ ...row, fields: JSON.parse(row.fields), saved: true }))
+        .map(templateRecord)
     },
     templateInfo(tenantId, id) {
-      return db.prepare('SELECT id,name,owner AS createdBy,version FROM templates WHERE tenant_id=? AND id=?').get(tenantId, id)
+      const row = db.prepare(`SELECT ${templateColumns} FROM templates WHERE tenant_id=? AND id=?`).get(tenantId, id)
+      return row && templateRecord(row)
     },
     template(tenantId, id, creator = null, version = null) {
       const latest = db.prepare(`SELECT id,name,fields,file,owner AS createdBy,version FROM templates
         WHERE tenant_id=$tenantId AND id=$id AND ($creator IS NULL OR owner=$creator) AND ($version IS NULL OR version=$version)`)
         .get({ tenantId, id, creator, version })
       if (latest || version === null) return latest
-      return db.prepare(`SELECT t.id,t.name,v.fields,v.file,t.owner AS createdBy,v.version
+      return db.prepare(`SELECT t.id,v.name,v.fields,v.file,t.owner AS createdBy,v.version
         FROM templates t JOIN template_versions v ON v.template_id=t.id
         WHERE t.tenant_id=$tenantId AND t.id=$id AND ($creator IS NULL OR t.owner=$creator) AND v.version=$version`)
         .get({ tenantId, id, creator, version })
     },
     templateVersions(tenantId, id) {
-      return db.prepare(`SELECT version, COALESCE(updated,created) AS created, COALESCE(updated_by,owner) AS createdBy
+      return db.prepare(`SELECT version, name, COALESCE(updated,created) AS created, COALESCE(updated_by,owner) AS createdBy
         FROM templates WHERE tenant_id=$tenantId AND id=$id
-        UNION ALL SELECT v.version,v.created,v.created_by FROM template_versions v JOIN templates t ON t.id=v.template_id
+        UNION ALL SELECT v.version,v.name,v.created,v.created_by FROM template_versions v JOIN templates t ON t.id=v.template_id
         WHERE t.tenant_id=$tenantId AND t.id=$id ORDER BY version DESC`).all({ tenantId, id })
     },
     saveTemplate(tenantId, name, fields, bytes, createdBy) {
@@ -284,20 +293,23 @@ export function createStore(path, { quotaBytes, limitsForTenant = () => defaultW
         return { id, name, fields, version: 1, saved: true }
       })
     },
-    reviseTemplate(tenantId, id, baseVersion, fields, bytes, subject) {
+    reviseTemplate(tenantId, id, baseVersion, fields, bytes, subject, name) {
+      if ((fields == null) !== (bytes == null)) throw new TypeError('Supply template fields and DOCX bytes together.')
       return transaction(() => {
-        const head = db.prepare('SELECT name,version FROM templates WHERE tenant_id=? AND id=?').get(tenantId, id)
+        const head = db.prepare('SELECT name,version,fields,length(file) AS size FROM templates WHERE tenant_id=? AND id=?').get(tenantId, id)
         if (!head) throw problem(404, 'Template not found.')
         if (head.version !== baseVersion) throw problem(409, 'This template has a newer version. Reopen it before saving another version.')
-        checkQuota(tenantId, bytes.length)
-        // Archive the exact bytes and author of the previous version before replacing the head.
-        db.prepare(`INSERT INTO template_versions(template_id,version,created,created_by,fields,file)
-          SELECT id,version,COALESCE(updated,created),COALESCE(updated_by,owner),fields,file FROM templates WHERE tenant_id=? AND id=?`)
+        const nextName = name ?? head.name
+        const nextFields = fields ?? JSON.parse(head.fields)
+        if (bytes == null && nextName === head.name) return { id, name: nextName, fields: nextFields, version: baseVersion, saved: true }
+        checkQuota(tenantId, bytes?.length ?? head.size)
+        db.prepare(`INSERT INTO template_versions(template_id,version,created,created_by,name,fields,file)
+          SELECT id,version,COALESCE(updated,created),COALESCE(updated_by,owner),name,fields,file FROM templates WHERE tenant_id=? AND id=?`)
           .run(tenantId, id)
         const version = baseVersion + 1
-        db.prepare('UPDATE templates SET version=?,fields=?,file=?,updated=?,updated_by=? WHERE tenant_id=? AND id=?')
-          .run(version, JSON.stringify(fields), bytes, new Date().toISOString(), subject, tenantId, id)
-        return { id, name: head.name, fields, version, saved: true }
+        db.prepare('UPDATE templates SET version=?,name=?,fields=?,file=COALESCE(?,file),updated=?,updated_by=? WHERE tenant_id=? AND id=?')
+          .run(version, nextName, JSON.stringify(nextFields), bytes ?? null, new Date().toISOString(), subject, tenantId, id)
+        return { id, name: nextName, fields: nextFields, version, saved: true }
       })
     },
     deleteTemplate(tenantId, id) { return db.prepare('DELETE FROM templates WHERE tenant_id=? AND id=?').run(tenantId, id).changes > 0 },

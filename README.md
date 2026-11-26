@@ -119,9 +119,11 @@ The endpoints below require a verified bearer token. Human document requests use
 | DELETE | `/api/jobs/:id` | Delete a completed/failed job and its artifact |
 | GET | `/api/templates` | Selected tenant’s template metadata |
 | POST | `/api/templates` | Save `{name, filename, file}` after DOCX inspection |
+| GET | `/api/templates/:id` | Current template metadata, including name, fields and version |
+| PATCH | `/api/templates/:id` | Edit the reviewed `baseVersion`. Supply `name`, the pair `filename` and `file`, or both changes together. Returns updated metadata or HTTP 409 for a version conflict. |
 | GET / POST | `/api/templates/:id/versions` | List versions or append one with `{baseVersion, filename, file}`. A concurrent edit returns 409. |
 | GET | `/api/templates/:id/versions/:version/download` | Download the exact DOCX for a version. Template downloads include `X-Template-Version`. |
-| GET | `/api/templates/:id/download` | Original saved DOCX template |
+| GET | `/api/templates/:id/download` | Current saved DOCX template |
 | DELETE | `/api/templates/:id` | Delete a saved template (creator or tenant admin/owner) |
 | GET / POST | `/api/organizations` | List memberships or create `{name, slug}` organization |
 | GET | `/api/invitations` | Your pending invitations |
@@ -135,6 +137,8 @@ The endpoints below require a verified bearer token. Human document requests use
 | GET | `/api/tenant/audit` | Latest 50 access changes (admin/owner) |
 | GET | `/api/personal-records` | Counts of your quarantined legacy records |
 | POST | `/api/tenant/import-personal` | Import your legacy files into a tenant you own; requires `{shareWithTenant: true}` |
+
+For a server-side example that authenticates an API client and edits a template saved in the UI, see [Edit a saved template](docs/client-api.md#edit-a-saved-template).
 
 `file` is canonical base64. Successful processing responses include `X-Document-Id` for the persisted job. `/api/health` and private service `/health` routes are unauthenticated probes and do not process documents. PDF readiness includes checking the renderer.
 

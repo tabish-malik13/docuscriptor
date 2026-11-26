@@ -7,7 +7,7 @@ import { validOrganizationSlug } from '../../../shared/organization-url.mjs'
 
 type LibraryItem = { id: string; name: string; created: number; version: number }
 type SavedTemplate = { id: string; name: string; version: number }
-export type TemplateVersion = { version: number; created: string }
+export type TemplateVersion = { version: number; created: string; name?: string }
 type Directory = { userId: string; organizations: Tenant[]; error?: string }
 type Listing = { scopeKey: string; items: LibraryItem[]; error?: string }
 type Status = 'loading' | 'signed-out' | 'no-workspace' | 'ready' | 'error'

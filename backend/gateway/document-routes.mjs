@@ -5,12 +5,14 @@ import { InputError } from '../shared/http-service.mjs'
 import { signServiceRequest } from '../shared/service-authorization.mjs'
 import { problem } from './store.mjs'
 import { adminRoles } from './tenant-authority.mjs'
+import { organizationTemplateEditScope } from './client-credentials.mjs'
 import { documentFilename } from '../../shared/document-filename.mjs'
 import { starterLayouts } from '../../shared/starter-layouts.mjs'
 import { registerBatchRoutes, requireClientScope } from './batch-routes.mjs'
 
 const idSchema = { type: 'string', pattern: '^[a-f0-9-]{36}$' }
 const versionNumber = { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER }
+const templateName = { type: 'string', minLength: 1, maxLength: 120, pattern: '\\S' }
 const paramsSchema = { type: 'object', required: ['id'], properties: { id: idSchema } }
 const generationSchema = {
   ...docxSchema,
@@ -182,6 +184,12 @@ export function registerDocumentRoutes(app, { store, auth, docxService, pdfServi
   app.get('/api/templates/mine', { onRequest: auth.requireTenant }, async (request) => ({
     items: store.listTemplates(request.tenantId, request.subject),
   }))
+  function templateInfo(request) {
+    const saved = store.templateInfo(request.tenantId, request.params.id)
+    if (!saved) throw problem(404, 'Template not found.')
+    return saved
+  }
+  app.get('/api/templates/:id', { ...access('templates:read'), schema: { params: paramsSchema } }, async (request) => templateInfo(request))
   async function inspectUpload(request) {
     const { filename, file } = request.body
     const bytes = readUpload(file)
@@ -198,31 +206,45 @@ export function registerDocumentRoutes(app, { store, auth, docxService, pdfServi
   }
   app.post('/api/templates', { ...mutate('templates:write'), schema: { body: {
     ...uploadSchema, required: ['name', 'filename', 'file'],
-    properties: { ...uploadSchema.properties, name: { type: 'string', minLength: 1, maxLength: 120, pattern: '\\S' } },
+    properties: { ...uploadSchema.properties, name: templateName },
   } } }, async (request, reply) => processing(request.tenantId, reply, async () => {
     const { fields, bytes } = await inspectUpload(request)
     const saved = store.saveTemplate(request.tenantId, request.body.name.trim(), fields, bytes, request.subject)
     return reply.code(201).send(saved)
   }))
-  function editableTemplate(request) {
-    const saved = store.templateInfo(request.tenantId, request.params.id)
-    if (!saved) throw problem(404, 'Template not found.')
-    if (saved.createdBy !== request.subject && !adminRoles.has(request.tenantRole)) {
-      throw problem(403, 'Only the creator or a tenant administrator can change this template.')
-    }
-    return saved
+  function requireTemplateAccess(request, action) {
+    const saved = templateInfo(request)
+    if (saved.createdBy === request.subject || adminRoles.has(request.tenantRole)) return saved
+    if (action === 'edit' && request.clientScopes?.includes(organizationTemplateEditScope)) return saved
+    throw problem(403, 'You do not have permission to ' + action + ' this template.')
   }
-  app.post('/api/templates/:id/versions', { ...mutate('templates:write'), schema: {
+  const templateEdit = { onRequest: auth.templateEdit, preHandler: auth.recheckProcessing }
+  function editTemplate(request, reply) {
+    const { id } = request.params
+    const { baseVersion, name, file } = request.body
+    const head = requireTemplateAccess(request, 'edit')
+    if (head.version !== baseVersion) throw problem(409, 'This template has a newer version. Reopen it before saving another version.')
+    if (!file) return store.reviseTemplate(request.tenantId, id, baseVersion, null, null, request.subject, name.trim())
+    return processing(request.tenantId, reply, async () => {
+      const { fields, bytes } = await inspectUpload(request)
+      // Inspection rechecks the caller's role. Apply it to this template before committing.
+      requireTemplateAccess(request, 'edit')
+      return store.reviseTemplate(request.tenantId, id, baseVersion, fields, bytes, request.subject, name?.trim())
+    })
+  }
+  app.patch('/api/templates/:id', { ...templateEdit, schema: {
+    params: paramsSchema, body: { ...uploadSchema, required: ['baseVersion'],
+      properties: { ...uploadSchema.properties, baseVersion: versionNumber, name: templateName },
+      anyOf: [{ required: ['name'] }, { required: ['file'] }],
+      dependencies: { file: ['filename'], filename: ['file'] } },
+  } }, async (request, reply) => editTemplate(request, reply))
+  app.post('/api/templates/:id/versions', { ...templateEdit, schema: {
     params: paramsSchema, body: { ...uploadSchema, required: ['baseVersion','filename','file'],
       properties: { ...uploadSchema.properties, baseVersion: versionNumber } },
-  } }, async (request, reply) => processing(request.tenantId, reply, async () => {
-    editableTemplate(request)
-    const { fields, bytes } = await inspectUpload(request)
-    // An admin can lose authority over another member's template during inspection.
-    editableTemplate(request)
-    const saved = store.reviseTemplate(request.tenantId, request.params.id, request.body.baseVersion, fields, bytes, request.subject)
+  } }, async (request, reply) => {
+    const saved = await editTemplate(request, reply)
     return reply.code(201).send(saved)
-  }))
+  })
   app.get('/api/templates/:id/versions', { ...access('templates:read'), schema: { params: paramsSchema } }, async (request) => {
     const items = store.templateVersions(request.tenantId, request.params.id)
     if (!items.length) throw problem(404, 'Template not found.')
@@ -246,7 +268,7 @@ export function registerDocumentRoutes(app, { store, auth, docxService, pdfServi
   app.get('/api/templates/mine/:id/download', { onRequest: auth.requireTenant, schema: { params: paramsSchema } },
     async (request, reply) => downloadTemplate(request, reply, request.subject))
   app.delete('/api/templates/:id', { ...mutate('templates:delete'), schema: { params: paramsSchema } }, async (request, reply) => {
-    editableTemplate(request)
+    requireTemplateAccess(request, 'delete')
     if (!store.deleteTemplate(request.tenantId, request.params.id)) throw problem(404, 'Template not found.')
     return reply.code(204).send()
   })

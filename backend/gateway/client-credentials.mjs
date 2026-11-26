@@ -1,8 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto'
 
+export const organizationTemplateEditScope = 'templates:edit:organization'
 export const clientScopes = Object.freeze([
   'documents:generate', 'documents:convert', 'documents:read', 'documents:delete',
-  'templates:read', 'templates:write', 'templates:delete',
+  'templates:read', 'templates:write', organizationTemplateEditScope, 'templates:delete',
 ])
 export const accessTokenLifetime = 900
 export const newClientSecret = () => 'dss_' + randomBytes(32).toString('base64url')
