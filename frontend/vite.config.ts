@@ -24,6 +24,7 @@ export default defineConfig(({ mode }) => {
         input: {
           workspace: fileURLToPath(new URL('index.html', import.meta.url)),
           editor: fileURLToPath(new URL('editor.html', import.meta.url)),
+          preview: fileURLToPath(new URL('preview.html', import.meta.url)),
         },
       },
     },
@@ -31,7 +32,8 @@ export default defineConfig(({ mode }) => {
       host: '127.0.0.1',
       port: 5173,
       strictPort: true,
-      proxy: { '/api': env.DEV_GATEWAY_URL || 'http://127.0.0.1:4000' },
+      // The gateway verifies the organization Host and Origin when redeeming sign-in tickets.
+      proxy: { '/api': { target: env.DEV_GATEWAY_URL || 'http://127.0.0.1:4000', changeOrigin: false } },
     },
   }
 })

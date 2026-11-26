@@ -1,9 +1,20 @@
 import { currentOrganizationSlug, workspaceConfig } from '../workspace/organization-location'
-import { installWorkspaceSession } from './supabase-auth'
+import { installWorkspaceSession, sessionTokens } from './supabase-auth'
 
 const pendingKey = 'docuscripter.workspace-sign-in'
 const base64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','')
 let exchange: Promise<void> | null = null
+
+export async function requestWorkspaceLink(userId: string, organizationId: string, challenge: string, state: string) {
+  // Both tokens must come from one SDK snapshot, including when another tab changes accounts.
+  const { accessToken, refreshToken } = await sessionTokens(userId)
+  const response = await fetch('/api/auth/workspace-link', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ organizationId, challenge, state, refreshToken }), signal: AbortSignal.timeout(10_000) })
+  const result = await response.json()
+  if (!response.ok) throw new Error(result.message || 'The workspace could not be opened.')
+  return result.url as string
+}
 
 export async function startWorkspaceSignIn() {
   if (!currentOrganizationSlug) return

@@ -1,5 +1,6 @@
 export const reservedSlugs = new Set(['www','app','api','auth','admin','login','signup','register','mail','support','help','docs','status','static','assets','editor','dashboard','billing','security'])
 export const organizationSlugPattern = '^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$'
+const loopbackHosts = new Set(['127.0.0.1', 'localhost', '[::1]'])
 export function validOrganizationSlug(slug) {
   return typeof slug === 'string' && new RegExp(organizationSlugPattern).test(slug) && !reservedSlugs.has(slug)
 }
@@ -9,10 +10,23 @@ export function organizationConfig(appOrigin, baseDomain, routing = 'subdomain')
   if (!['http:','https:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/' || url.search || url.hash ||
     !['path','subdomain'].includes(routing) ||
     !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9-]+$/.test(domain)) throw new Error('Configure a valid application origin and organization base domain.')
-  if (url.protocol === 'http:' && (!['127.0.0.1','localhost','[::1]'].includes(url.hostname) && !url.hostname.endsWith('.localhost') || !domain.endsWith('.localhost'))) {
+  if (url.protocol === 'http:' && (!loopbackHosts.has(url.hostname) && !url.hostname.endsWith('.localhost') || !domain.endsWith('.localhost'))) {
     throw new Error('Organization workspaces require HTTPS outside localhost.')
   }
   return { appOrigin: url.origin, baseDomain: domain, routing }
+}
+
+// Session storage is scoped to an origin. Enter the directory on its configured origin before signing in.
+export function canonicalDirectoryUrl(href, config) {
+  const current = new URL(href)
+  const canonical = new URL(config.appOrigin)
+  if (current.origin === canonical.origin || current.protocol !== canonical.protocol || current.port !== canonical.port) return null
+  const localAlias = (loopbackHosts.has(canonical.hostname) || canonical.hostname.endsWith('.localhost')) && loopbackHosts.has(current.hostname)
+  if (!localAlias && current.hostname !== config.baseDomain) return null
+  canonical.pathname = current.pathname
+  canonical.search = current.search
+  canonical.hash = current.hash
+  return canonical.href
 }
 export function organizationUrl(slug, config) {
   if (!validOrganizationSlug(slug)) throw new Error('Choose a workspace address with 3–40 lowercase letters, numbers, or hyphens.')

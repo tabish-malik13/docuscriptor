@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 import PizZip from 'pizzip'
 import { fixture, invoiceValues } from './helpers.mjs'
 import { starterTemplate } from '../docx/starter-templates.mjs'
@@ -23,6 +24,7 @@ test('all document and storage endpoints require authentication before validatin
     ['POST', '/api/docx/generate'], ['POST', '/api/pdf/convert'], ['POST', '/api/templates'],
     ['GET', '/api/jobs'], ['GET', '/api/jobs/' + id], ['GET', '/api/jobs/' + id + '/download'], ['DELETE', '/api/jobs/' + id],
     ['GET', '/api/templates'], ['GET', '/api/templates/' + id + '/download'], ['DELETE', '/api/templates/' + id],
+    ['GET', '/api/templates/mine'], ['GET', '/api/templates/mine/' + id + '/download'],
   ]) {
     assert.equal((await f.gateway.inject({ method, url })).statusCode, 401, method + ' ' + url)
   }
@@ -49,6 +51,52 @@ test('real DOCX generation persists bytes and metadata across gateway restarts',
   assert.equal(restored.statusCode, 200)
   assert.deepEqual(restored.rawPayload, result.rawPayload)
   assert.equal(restored.headers['cache-control'], 'no-store')
+})
+
+test('download names preserve version numbers, append a single extension and keep Unicode boundaries intact', async t => {
+  const f = await fixture(t), owner = f.principal()
+  const file = (await starterTemplate('invoice')).toString('base64')
+  const filename = response => decodeURIComponent(response.headers['content-disposition'].split("filename*=UTF-8''")[1])
+  for (const title of ['Invoice v2.1', 'Invoice.DOCX']) {
+    const created = await f.gateway.inject({ method: 'POST', url: '/api/templates', headers: owner.headers,
+      payload: { name: title, filename: 'invoice.docx', file } })
+    assert.equal(created.statusCode, 201)
+    const id = created.json().id
+    const source = await f.gateway.inject({ url: '/api/templates/' + id + '/download', headers: owner.headers })
+    const output = await generate(f, owner, { savedTemplateId: id, values: invoiceValues() })
+    assert.equal(output.statusCode, 200)
+    const expected = title === 'Invoice.DOCX' ? 'Invoice.docx' : 'Invoice v2.1.docx'
+    assert.equal(filename(source), expected)
+    assert.equal(filename(output), expected)
+  }
+  const longName = 'a'.repeat(199) + '📄.docx'
+  const result = await generate(f, owner, { filename: longName, file, values: invoiceValues() })
+  assert.equal(result.statusCode, 200)
+  const saved = await f.gateway.inject({ url: '/api/jobs/' + result.headers['x-document-id'], headers: owner.headers })
+  assert.equal(saved.json().name, filename(result))
+  assert.equal(saved.json().source, longName)
+  assert.equal(filename(result), 'a'.repeat(199) + '.docx')
+})
+
+test('Activity advertises another page only when more tenant records exist', async t => {
+  const f = await fixture(t), owner = f.principal()
+  const store = createStore(join(f.dir, 'workspace.sqlite'))
+  t.after(() => store.close())
+  function add(tenantId) {
+    const id = store.beginJob(tenantId, { name: 'Invoice.docx', kind: 'DOCX', source: 'invoice', createdBy: owner.user.id })
+    store.failJob(tenantId, id, 'Processing stopped.')
+  }
+  for (let i = 0; i < 50; i++) add(owner.tenantId)
+  add(randomUUID())
+  const page = async offset => (await f.gateway.inject({ url: '/api/jobs?offset=' + offset, headers: owner.headers })).json()
+  const full = await page(0)
+  assert.equal(full.items.length, 50)
+  assert.equal(full.nextOffset, null)
+  add(owner.tenantId)
+  assert.equal((await page(0)).nextOffset, 50)
+  const last = await page(50)
+  assert.equal(last.items.length, 1)
+  assert.equal(last.nextOffset, null)
 })
 
 test('documents and templates remain private to their tenant even from another tenant admin', async (t) => {
@@ -87,6 +135,44 @@ test('saved templates are inspected, survive restart, generate documents, and ca
   assert.equal((await f.gateway.inject({ method: 'DELETE', url: '/api/templates/' + saved.id, headers: owner.headers })).statusCode, 204)
   assert.equal((await f.gateway.inject({ method: 'DELETE', url: '/api/jobs/' + generated.headers['x-document-id'], headers: owner.headers })).statusCode, 204)
   assert.deepEqual(await jobs(f, owner), [])
+})
+
+test('the editor reopens only its user’s original templates from the selected organization', async (t) => {
+  const f = await fixture(t)
+  const owner = f.principal()
+  const coworker = f.principal('admin', owner.tenantId)
+  const other = f.principal()
+  f.setRole(owner, 'operator', other.tenantId)
+  const otherWorkspace = { ...owner.headers, 'x-tenant-id': other.tenantId }
+  const bytes = await starterTemplate('invoice')
+  const save = async (headers) => {
+    const result = await f.gateway.inject({ method: 'POST', url: '/api/templates', headers,
+      payload: { name: 'Saved invoice', filename: 'invoice.docx', file: bytes.toString('base64') } })
+    assert.equal(result.statusCode, 201, result.body)
+    return result.json().id
+  }
+  const mine = await save(owner.headers)
+  const theirs = await save(coworker.headers)
+  const elsewhere = await save(otherWorkspace)
+  await f.restart()
+  const list = async (headers, url = '/api/templates/mine') => {
+    const response = await f.gateway.inject({ url, headers })
+    assert.equal(response.statusCode, 200, response.body)
+    return response.json().items.map((item) => item.id)
+  }
+  assert.deepEqual(await list(owner.headers), [mine])
+  assert.deepEqual(await list(otherWorkspace), [elsewhere])
+  assert.deepEqual(await list(other.headers), [])
+  assert.deepEqual((await list(owner.headers, '/api/templates')).sort(), [mine, theirs].sort())
+  const download = (headers, id) => f.gateway.inject({ headers, url: '/api/templates/mine/' + id + '/download' })
+  f.setRole(owner, 'viewer')
+  const reopened = await download(owner.headers, mine)
+  assert.equal(reopened.statusCode, 200, reopened.body)
+  assert.deepEqual(reopened.rawPayload, bytes)
+  assert.equal((await download(coworker.headers, mine)).statusCode, 404)
+  assert.equal((await download(owner.headers, elsewhere)).statusCode, 404)
+  f.setRole(owner, null)
+  assert.equal((await download(owner.headers, mine)).statusCode, 403)
 })
 
 test('viewer cannot process or upload templates; editable user metadata cannot grant access', async (t) => {

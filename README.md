@@ -11,7 +11,7 @@ npm ci
 npm run dev:web
 ```
 
-Open [the DOCX editor](http://127.0.0.1:5173/editor.html) to create a blank Word document, open a DOCX up to 4 MB, edit it, and download the result. The local editor needs no account and keeps its document in browser memory. Download edits before leaving; it does not save to the server.
+The [DOCX editor](http://127.0.0.1:5173/editor.html) opens on a blank page. Anyone can write, open a DOCX up to 4 MB and download a Word file locally. Sign in to see your saved templates under **My templates**. Choose **Save template** to add a new document to the organization’s library. When editing a saved template, choose **Save version** to keep its name and ID, or **Save a copy** to create a separate template. Click the version number to see earlier versions and download them. Download or save your edits before leaving.
 
 ## Run the full workspace
 
@@ -43,18 +43,31 @@ The account page lists **Your organizations**. Create an organization with its n
 
 Native development uses `http://<organization>.docuscriptor.localhost:5173/`, with central sign-in at `http://127.0.0.1:5173/`. The `.localhost` suffix resolves to loopback in supported browsers. Production is configured for `https://<organization>.docuscriptor.com/` by setting `PUBLIC_APP_ORIGIN=https://docuscriptor.com` and `PUBLIC_ORGANIZATION_BASE_DOMAIN=docuscriptor.com` before building the Compose images. The organization address is stable when its display name changes. Subdomain requests are checked against both membership and the organization selected by their host.
 
-The central account page transfers sign-in using a single-use, 60-second ticket protected by a browser-held proof verifier. Access and refresh tokens are never placed in URLs. Different workspace origins keep separate browser authentication state. A gateway restart invalidates pending tickets; retrying from the organization directory starts a new handoff.
+The central account page transfers sign-in using a single-use, 60-second ticket protected by a browser-held proof verifier. Access and refresh tokens are never placed in URLs. Different workspace origins keep separate browser authentication state. Signing out from the directory or an organization ends that Supabase session across the gateway and returns the browser to the account page. Open workspaces and the editor recheck access on focus, navigation restoration and while visible. Independent sign-ins on other devices keep their own sessions. The gateway stores a digest of the ended session in the workspace database so renewed tokens and outstanding handoff tickets for that session cannot reopen it. A gateway restart invalidates pending tickets. Returning to the directory starts a new handoff.
 
 To make public addresses live, point `docuscriptor.com` and `*.docuscriptor.com` to your application ingress and terminate HTTPS with certificates covering both. Forward the original `Host` header and `/api/*` to the same app deployment. The supplied Caddy container serves port 4173 behind that ingress; it does not provision external DNS or wildcard certificates. Set Supabase Auth's Site URL and allowed confirmation redirects to the central production origin. No DNS provider or production host is configured by this repository.
 
+## API clients and WhatsApp
+
+In **Organization settings → API clients**, owners and admins can issue, rotate, and revoke a consumer key (client ID) and secret for a server integration. Each client belongs to one organization and can receive just the permissions it needs. For example, a converter can return its own PDFs using only `documents:convert`. [Client setup, scopes and runnable conversion example](docs/client-api.md)
+
+In **Organization settings → WhatsApp**, owners and admins can connect a WhatsApp Business number, select a workspace API client, enroll permitted senders and copy their organization’s webhook URL into Meta. They can edit or disconnect the connection at any time. The optional adapter accepts signed messages from enrolled senders and calls the same tenant-scoped gateway. A sender can attach a Word file and receive a PDF, generate a document from a template, or work with saved documents according to the configured client's permissions. It requires a WhatsApp Business account, Meta credentials and a reachable HTTPS callback. The visual DOCX editor and organization administration use the browser. The core workspace and client API run independently of WhatsApp. [WhatsApp setup and chat commands](docs/whatsapp.md)
+
+## Organization billing
+
+Organization owners can open **Billing & plans** to see their license, allowances and usage. Enable managed billing to offer Plus and Ultimate through Stripe or Razorpay, or assign contract licenses by organization UUID. Both payment integrations are disabled by default. [Billing configuration and activation guide](docs/billing.md)
+
 ## Document workflows
 
-- **Generate DOCX:** choose an invoice, business letter, or project brief starter, upload a Word template with JSON values, or choose a saved custom template. Supported placeholders are simple text fields such as `{customer_name}`. Each required field needs a value. Loops, executable expressions, macros, and embedded objects are rejected.
+Overview provides direct access to document tools, template previews and recent activity. Pin a template from the library to keep it on your personal overview in this browser and organization. [Workspace screenshots and design research](docs/workspace-design.md)
+
+- **Bulk generation** turns a UTF-8 CSV roster into up to 100 individually named PDFs or Word files. Choose the certificate-of-completion starter or a saved Word template, match columns, review the first finished file, and download a ZIP. Runs can be paused and reopened. [Operator and API guide](docs/bulk-generation.md) · [Market research and pilot proposal](docs/product-strategy.md)
+- **Generate DOCX** shows a read-only Word preview alongside the runtime values for a starter, saved template or uploaded DOCX. Type a value to see it in place. Unfilled fields appear as tokens such as `{customer_name}`. Choose **Generate DOCX** to download the finished document and save it in Activity. Each required field needs a value. Loops, executable expressions, macros, and embedded objects are rejected.
 - **Convert PDF:** upload a DOCX or self-contained UTF-8 HTML file. Images and CSS must be embedded. Scripts, macros, and outbound renderer requests are disabled.
-- **Templates:** upload, inspect, download, reuse, and delete tenant custom Word templates. Fields are discovered automatically and shown as form inputs. Download a template into the local editor to revise it, then upload the revised version.
+- **Templates** lets you upload and reuse Word templates. Their fields appear automatically as form inputs. In the DOCX editor, **My templates** lists your own uploads and their current versions. To remove a saved template and its version history, choose its trash icon in **My templates** or **Organization templates** and confirm deletion. Operators can delete their own uploads. Owners and admins can delete any saved template in their organization.
 - **Activity:** view processing, ready, and failed jobs; download saved outputs; delete old jobs and their outputs; load older history. The page refreshes while a displayed job is processing. Reloading the browser preserves server-saved history and documents.
 
-Processing is synchronous, with four concurrent gateway operations, a 4 MB input limit and a 16 MB output limit. Each tenant has a 256 MB storage budget (including reserved space for in-flight outputs), up to 1,000 jobs and 100 saved templates. Delete saved records to free the tenant quota. History is paginated in batches of 50. Failed jobs retain a safe error message; uploaded source files and runtime values are not saved, except DOCX files explicitly saved as templates. Outputs naturally contain the values rendered into them.
+Document API processing is synchronous. The gateway supports four concurrent operations overall and two per organization by default, with a 4 MB input limit and a 16 MB output limit. Set `TENANT_PROCESSING_CONCURRENCY` to an integer from 1 to 4 to change the per-organization cap. The default self-hosted and Starter licenses include 256 MiB of storage (including reserved space for in-flight outputs), up to 1,000 retained jobs and 100 saved templates. Plus and Ultimate have configurable organization allowances. Delete saved records to free the tenant quota. History is paginated in batches of 50. Failed jobs retain a safe error message. Uploaded files are retained only when explicitly saved as templates. Single-document requests discard runtime values after processing. Bulk generation stores queued values until their row finishes or fails, the creator discards the batch, or its 30-day retention period expires. Outputs contain the values rendered into them.
 
 ## Services and authorization
 
@@ -62,26 +75,26 @@ Processing is synchronous, with four concurrent gateway operations, a 4 MB input
 | --- | --- |
 | `frontend` | React/Vite static workspace and separate local editor entry point |
 | Supabase | Separately deployed Auth and Postgres tenant authority protected by RLS |
-| `backend/gateway` | Verifies Supabase identity and current tenant membership, enforces tenant roles, persists tenant jobs, templates and outputs |
+| `backend/gateway` | Verifies human sessions and organization roles, issues scoped machine tokens, enforces quotas and stores tenant documents |
 | `backend/docx` | Private DOCX generation and template inspection service |
 | `backend/pdf` | Private PDF adapter that validates uploads and authenticates to Gotenberg |
 | Gotenberg renderer | Private LibreOffice/Chromium engine, reachable only from the PDF adapter network |
 
-All workspace document requests go through `/api/*` and include `X-Tenant-Id`. That header selects a scope; it never grants access. The gateway verifies the bearer token with Supabase Auth and queries current membership with that user's token. Documents, templates and quotas belong to the tenant. Members can access shared content, while people outside the tenant cannot access it even if they own another tenant. A user's roles in different tenants are independent. Viewers cannot mutate content; operators delete content they created; owners and admins manage tenant content.
+Browser document requests go through `/api/*` and include `X-Tenant-Id`. That header selects a scope; it never grants access. The gateway verifies the bearer token with Supabase Auth and queries current membership with that user's token. Documents, templates and quotas belong to the tenant. Members can access shared content, while people outside the tenant cannot access it even if they own another tenant. A user's roles in different tenants are independent. Viewers cannot mutate content; operators delete content they created; owners and admins manage tenant content.
 
-Tenant switching remounts the workspace and clears loaded data and processing forms. Membership is refreshed on window focus and periodically, and rechecked on every backend request. Processing permission is rechecked before an output or template is saved or returned, so removing a member during generation discards their pending result.
+Tenant switching remounts the workspace and clears loaded data and processing forms. The UI refreshes membership on window focus and periodically. The gateway checks current membership on tenant-scoped human requests. Processing permission is rechecked before an output or template is saved or returned, so removing a member during generation discards their pending result.
 
-After verifying a user's tenant processing permission, the gateway sends a service-specific HMAC assertion with the user ID, tenant ID, expiry, nonce, method, route, and payload hash. Processing services reject unsigned requests, tampering, expired assertions, wrong audiences and replay. Keys remain server-only. The renderer additionally requires Basic authentication. Private processing networks and renderer egress restrictions remain enforced by Compose. For services on separate hosts, use private TLS connections and manage the three secrets in your deployment secret store.
+After verifying the caller’s processing permission, the gateway sends a service-specific HMAC assertion with the user or API client identity, tenant ID, expiry, nonce, method, route, and payload hash. Processing services reject unsigned requests, tampering, expired assertions, wrong audiences and replay. Keys remain server-only. The renderer additionally requires Basic authentication. Private processing networks and renderer egress restrictions remain enforced by Compose. For services on separate hosts, use private TLS connections and manage the three secrets in your deployment secret store.
 
 Tenant owners and admins manage invitations and roles in **Organization settings**. Invitations require the recipient's exact verified email and expire after seven days; no invitation email is sent by the app. Owners may appoint additional owners, and the last owner cannot leave, be demoted, or have their Auth account deleted without transferring ownership first. Access changes are audited. New accounts do not receive fabricated identities, seeded tenants, or automatic access to other organizations.
 
-The gateway limits pre-authentication traffic by source IP and authenticated requests by subject. The default source IP budget is shared when requests arrive through the provided reverse proxy, which is suitable for a small workspace. Adapt trusted proxy handling and budgets to your deployment before scaling traffic.
+The gateway applies configurable limits to incoming traffic, token exchanges, WhatsApp webhooks, verified users and API clients, and tenant-wide traffic and writes. By default, callers behind the same proxy share its source-IP budget. Configure trusted proxy addresses to match your ingress. [Rate limits, defaults and proxy configuration](docs/rate-limits.md)
 
 ## Storage and operations
 
-Compose persists `/app/data/workspace.sqlite` in the `workspace-data` named volume. Back up before upgrading from the personal workspace version: legacy files remain quarantined until their creator explicitly imports them into a tenant they own. Native gateway runs default to `.data/workspace.sqlite`; `DATA_PATH` overrides the filename. The database includes artifact BLOBs, templates and metadata with tenant-filtered queries, transactions and SQLite WAL. Database files are created with restricted permissions. Supabase holds the tenant directory, memberships, invitations and access audit; apply the SQL schema before use. Document bytes stay local, and no Supabase Storage bucket or service-role key is needed.
+Compose persists `/app/data/workspace.sqlite` in the `workspace-data` named volume. Back up before upgrading from the personal workspace version: legacy files remain quarantined until their creator explicitly imports them into a tenant they own. Native gateway runs default to `.data/workspace.sqlite`; `DATA_PATH` overrides the filename. The database includes artifact BLOBs, templates and metadata with tenant-filtered queries, transactions and SQLite WAL. Database files are created with restricted permissions. Supabase holds the tenant directory, memberships, invitations and access audit; apply the SQL schema before use. Document bytes are stored on the gateway volume. When WhatsApp is enabled, requested inputs and outputs also pass through Meta. The gateway needs no Supabase Storage bucket or service-role key.
 
-Run **one gateway process per database** on local disk. Startup marks interrupted processing jobs failed so users can resubmit; it does not silently replay document operations. For multiple gateway replicas, move this store behind a database/storage service first. SQLite files and backups are not application-encrypted: use encrypted host storage where required. Deleted records stop being accessible through the API; historical bytes may remain in SQLite pages or backups until those are reclaimed under your retention policy.
+Run **one gateway process per database** on local disk. Startup marks interrupted processing jobs failed so users can resubmit; it does not silently replay document operations. For multiple gateway replicas, move this store behind a database/storage service first. The gateway encrypts WhatsApp connection credentials at the application layer. Use encrypted host storage where required for the document database, messaging inbox and backups. Deleted records stop being accessible through the API; historical bytes may remain in SQLite pages or backups until those are reclaimed under your retention policy.
 
 Back up the complete named volume while the gateway is stopped (`docker compose stop gateway`), then restart it (`docker compose start gateway`). Restore the database/volume with the gateway stopped as well. Do not copy only the main SQLite file from a running WAL database. `docker compose down` preserves the volume; `docker compose down -v` permanently deletes saved workspace data. Database pages are reused after deletion; a maintenance SQLite `VACUUM` can reclaim unused disk space while the gateway is stopped.
 
@@ -89,18 +102,25 @@ The Caddy image serves `frontend/dist` and proxies the gateway. The editor has a
 
 ## API
 
-All endpoints below require a verified bearer token. Document endpoints require `X-Tenant-Id` and a current membership. Processing and template writes require a tenant operator/admin/owner role. IDs are opaque UUIDs and tenant scope is checked on every access.
+The endpoints below require a verified bearer token. Human document requests use `X-Tenant-Id` and current membership. Human processing and template writes require an operator, admin, or owner. Server integrations use a tenant-bound token with the matching document permissions. IDs are opaque UUIDs and tenant scope is checked on every access.
 
 | Method | Endpoint | Result |
 | --- | --- | --- |
 | POST | `/api/docx/generate` | DOCX attachment; supply `{templateId, values}`, `{savedTemplateId, values}`, or `{filename, file, values}` |
+| POST | `/api/docx/preview` | Transient DOCX with missing values shown as tokens. Explicit empty strings render as blank. Accepts the generation inputs. Supply `savedTemplateVersion` with `savedTemplateId` to use the same revision for preview and generation. |
 | POST | `/api/pdf/convert` | PDF attachment; supply `{filename, file}` |
+| POST / GET | `/api/batches` | Create a run with mapped rows or list the caller’s runs in this tenant |
+| GET / DELETE | `/api/batches/:id` | Inspect row outcomes or discard the run and queued inputs |
+| POST | `/api/batches/:id/next` | Process one pending row with current authorization |
+| GET | `/api/batches/:id/download` | ZIP of available files with included and omitted counts |
 | GET | `/api/jobs?offset=0` | `{items, nextOffset}` with durable job status |
 | GET | `/api/jobs/:id` | Job metadata |
 | GET | `/api/jobs/:id/download` | Saved ready artifact |
 | DELETE | `/api/jobs/:id` | Delete a completed/failed job and its artifact |
 | GET | `/api/templates` | Selected tenant’s template metadata |
 | POST | `/api/templates` | Save `{name, filename, file}` after DOCX inspection |
+| GET / POST | `/api/templates/:id/versions` | List versions or append one with `{baseVersion, filename, file}`. A concurrent edit returns 409. |
+| GET | `/api/templates/:id/versions/:version/download` | Download the exact DOCX for a version. Template downloads include `X-Template-Version`. |
 | GET | `/api/templates/:id/download` | Original saved DOCX template |
 | DELETE | `/api/templates/:id` | Delete a saved template (creator or tenant admin/owner) |
 | GET / POST | `/api/organizations` | List memberships or create `{name, slug}` organization |
@@ -127,6 +147,8 @@ npm run check
 This runs Node's built-in test runner and the TypeScript/Vite production build. Tests use temporary databases and isolated in-memory identity/tenant/renderer doubles; they never provision users or seed workspace data. They cover real DOCX rendering, persistence/restart recovery, template workflows, tenant isolation and sharing, role revocation during processing, safe personal-data migration, auth failures, signed service requests, upload validation, pagination, quotas and renderer failures.
 
 The GitHub Actions workflow also tests tenant RLS and ownership/invitation RPCs against a disposable PostgreSQL database, then starts the pinned Gotenberg image and tests real HTML and DOCX conversion plus renderer authentication. To run that test locally against an isolated authenticated renderer, set `GOTENBERG_TEST_URL` and `GOTENBERG_TEST_PASSWORD` when running `npm test`. Without them, that one integration test is explicitly skipped. The check command can also run on a self-hosted CI runner; no CI service is required by the application.
+
+The integration suite covers OAuth grants, narrow scopes, key rotation and revocation, tenant limits, signed WhatsApp callbacks, duplicate deliveries, and the public proxy. WhatsApp tests simulate Meta’s media and messaging endpoints. Batch tests check CSV mapping, certificate fields, naming, idempotency, quota accounting, recovery, partial downloads and tenant isolation. The opt-in live renderer check also generates a two-certificate PDF batch.
 
 ## Dependency notices
 

@@ -1,0 +1,11 @@
+services:
+  gateway:
+    environment:
+      BILLING_LICENSES_FILE: /run/secrets/licenses.json
+    volumes:
+      - type: bind
+        source: ${BILLING_LICENSES_FILE:?Set an absolute path to your license configuration file}
+        target: /run/secrets/licenses.json
+        read_only: true
+        bind:
+          create_host_path: false

@@ -9,7 +9,6 @@
     "start:pdf": "node --env-file-if-exists=../.env pdf/server.mjs"
   },
   "dependencies": {
-    "@fastify/rate-limit": "10.3.0",
     "docx": "9.5.1",
     "docxtemplater": "3.71.1",
     "fastify": "5.12.8",

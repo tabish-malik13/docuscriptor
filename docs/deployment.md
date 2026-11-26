@@ -2,7 +2,7 @@
 
 This deployment uses Cloudflare Pages' free plan for static React assets and a small API proxy, your existing Supabase project for Auth and organization Postgres data, and your computer for the gateway/DOCX/PDF containers. No domain purchase is required. The app remains self-hostable; Cloudflare is an optional deployment adapter.
 
-The frontend address is `https://<actual-project>.pages.dev`, subject to availability. Organization links are `/org/<slug>` on the same origin. All organizations share browser sign-in state; organization membership and document roles are still checked on every gateway request. Subdomain mode remains available for later custom-domain deployment.
+The frontend address is `https://<actual-project>.pages.dev`, subject to availability. Organization links are `/org/<slug>` on the same origin. All organizations share browser sign-in state. The gateway checks organization membership and document roles on tenant-scoped human requests, and validates machine tokens against their tenant grants. Subdomain mode remains available for later custom-domain deployment.
 
 ## First deployment
 
@@ -39,6 +39,8 @@ The frontend address is `https://<actual-project>.pages.dev`, subject to availab
 
 ## Restarting and stopping
 
+To exercise WhatsApp in the preview, create a client in the preview workspace, then open **Organization settings → WhatsApp** and save the connection. Register its Pages HTTPS callback and verification token in Meta, and keep the backend tunnel running. The Pages proxy preserves the signed request bytes. Deployments using the operator-managed configuration can still set `WHATSAPP_CONFIG_FILE` to mount the file into the preview gateway. [WhatsApp setup and commands](whatsapp.md)
+
 Quick Tunnel URLs change when restarted. Run `preview:backend` again, update `BACKEND_ORIGIN`, and redeploy Pages with the same commands. If Docker, the tunnel, or the computer stops, processing is unavailable; the frontend reports a backend-offline error. This is a development preview, not an always-on production service. Cloudflare applies free-tier request limits; no paid plan is required by this configuration.
 
 Ctrl+C stops the tunnel. To stop the preview containers while preserving saved records:
@@ -51,7 +53,7 @@ Do not add `-v`: that deletes the preview's saved documents. Keep one gateway pr
 
 ## Current storage split
 
-Supabase Postgres holds organizations, memberships, invitations and access audit. The gateway's existing SQLite store holds job metadata, generated document bytes and saved templates. SQLite needs no additional server or npm dependency and supports local/offline storage, but requires a durable local disk and one gateway process. It is not suitable for ephemeral serverless filesystems.
+Supabase Postgres holds organizations, memberships, invitations and access audit. The gateway's SQLite volume holds job metadata, document bytes, saved templates, API client grants, rate counters, encrypted WhatsApp connection settings and the WhatsApp inbox. Restore the original WhatsApp encryption key with the gateway data when moving a connected deployment. SQLite requires a durable local disk and one gateway process.
 
 For an always-on cloud deployment, a future storage migration should put job/template metadata in Postgres and file bytes in private Supabase Storage buckets, with membership-based RLS, quota handling and an explicit migration of existing records. That migration is separate from this preview configuration; existing files are not silently moved to the cloud. DOCX and PDF engines still need compute even after moving storage.
 

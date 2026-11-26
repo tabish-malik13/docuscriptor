@@ -1,0 +1,5 @@
+html, body, #root { height: 100%; margin: 0; }
+body { background: #edf0f3; color: #52606c; font: 14px system-ui, sans-serif; }
+#root { display: flex; flex-direction: column; }
+.preview-viewport { flex: 1; min-height: 0; overscroll-behavior: contain; }
+[role="alert"] { margin: auto; padding: 1rem; }

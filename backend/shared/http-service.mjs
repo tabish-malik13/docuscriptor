@@ -2,9 +2,23 @@ import Fastify from 'fastify'
 
 export class InputError extends Error {}
 
-export function createService({ logger = { level: process.env.LOG_LEVEL || 'info', redact: ['req.headers.authorization'] } } = {}) {
+export function createService({ logger = {}, trustProxy = false } = {}) {
   const app = Fastify({
-    logger,
+    logger: logger === false ? false : {
+      level: process.env.LOG_LEVEL || 'info', ...logger,
+      serializers: {
+        ...logger.serializers,
+        // Route templates retain useful request context without logging credentials,
+        // query strings, document IDs or user-supplied paths.
+        req(request) { return { method: request.method, route: request.routeOptions?.url, remoteAddress: request.raw?.socket.remoteAddress } },
+        // Parser errors may carry the raw HTTP packet, including credential headers.
+        err(error) { return { type: error.name, code: error.code } },
+      },
+    },
+    trustProxy,
+    frameworkErrors(error, _request, reply) {
+      return reply.code(error.statusCode || 500).header('Cache-Control', 'no-store').send({ message: 'The request could not be accepted.' })
+    },
     bodyLimit: 6 * 1024 * 1024,
     requestTimeout: 30_000,
     ajv: { customOptions: { coerceTypes: false, removeAdditional: false } },
@@ -12,6 +26,8 @@ export function createService({ logger = { level: process.env.LOG_LEVEL || 'info
   app.addHook('onSend', async (_request, reply) => {
     reply.header('Cache-Control', 'no-store').header('X-Content-Type-Options', 'nosniff')
   })
+  // Fastify's default 404 message and log line both include the full request URL.
+  app.setNotFoundHandler((_request, reply) => reply.code(404).send({ statusCode: 404, error: 'Not Found', message: 'Route not found.' }))
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof InputError) return reply.code(422).send({ message: error.message })
     if (error.validation) return reply.code(400).send({ message: 'Check the file type and required fields. Runtime values must be text.' })

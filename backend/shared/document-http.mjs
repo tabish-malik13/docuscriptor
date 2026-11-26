@@ -1,4 +1,5 @@
 import { InputError } from './http-service.mjs'
+import { starterLayouts } from '../../shared/starter-layouts.mjs'
 
 export const maxFileBytes = 4 * 1024 * 1024
 export const maxOutputBytes = 16 * 1024 * 1024
@@ -24,7 +25,7 @@ export const docxSchema = {
   ],
   properties: {
     ...uploadFields,
-    templateId: { type: 'string', enum: ['invoice', 'letter', 'brief'] },
+    templateId: { type: 'string', enum: Object.keys(starterLayouts) },
     values: {
       type: 'object',
       maxProperties: 64,

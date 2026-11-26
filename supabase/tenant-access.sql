@@ -53,6 +53,17 @@ create table public.ds_invitations (
 create index ds_invitations_tenant_idx on public.ds_invitations(tenant_id,created_at desc);
 create index ds_invitations_email_idx on public.ds_invitations(email) where accepted_at is null and revoked_at is null;
 create index ds_invitations_invited_by_idx on public.ds_invitations(invited_by);
+-- Recipients can read their invitation before they are allowed to read the tenant.
+create function docuscripter_private.refresh_invitation_name() returns trigger
+language plpgsql security invoker set search_path = '' as $$
+begin
+  update public.ds_invitations set tenant_name=new.name
+  where tenant_id=new.id and accepted_at is null and revoked_at is null and expires_at>now();
+  return new;
+end $$;
+create trigger ds_refresh_invitation_name after update of name on public.ds_tenants
+  for each row when (old.name is distinct from new.name)
+  execute function docuscripter_private.refresh_invitation_name();
 create table public.ds_audit_events (
   id bigint generated always as identity primary key,
   tenant_id uuid not null references public.ds_tenants(id) on delete cascade,
@@ -196,7 +207,7 @@ create function public.ds_set_member_role(p_tenant_id uuid,p_user_id uuid,p_role
 
 revoke all on all functions in schema docuscripter_private from public,anon,authenticated,service_role;
 grant execute on all functions in schema docuscripter_private to authenticated;
-revoke all on function docuscripter_private.keep_last_owner() from public,anon,authenticated,service_role;
+revoke all on function docuscripter_private.keep_last_owner(),docuscripter_private.refresh_invitation_name() from public,anon,authenticated,service_role;
 revoke all on function public.ds_create_tenant(text,text),public.ds_rename_tenant(uuid,text),public.ds_invite_member(uuid,text,text),public.ds_accept_invitation(uuid),public.ds_revoke_invitation(uuid,uuid),public.ds_set_member_role(uuid,uuid,text) from public,anon,authenticated,service_role;
 grant execute on function public.ds_create_tenant(text,text),public.ds_rename_tenant(uuid,text),public.ds_invite_member(uuid,text,text),public.ds_accept_invitation(uuid),public.ds_revoke_invitation(uuid,uuid),public.ds_set_member_role(uuid,uuid,text) to authenticated;
 notify pgrst, 'reload schema';

@@ -13,7 +13,7 @@ export async function fixture(t, options = {}) {
   t.after(() => rm(dir, { recursive: true, force: true }))
   const docxSecret = randomBytes(32).toString('hex')
   const pdfSecret = randomBytes(32).toString('hex')
-  const rendererPassword = randomBytes(32).toString('hex')
+  const rendererPassword = options.renderer?.password ?? randomBytes(32).toString('hex')
   const subjects = new Map()
   const memberships = new Map()
   const tenants = new Map()
@@ -30,6 +30,12 @@ export async function fixture(t, options = {}) {
     const person = { user, token, tenantId, headers: { authorization: 'Bearer ' + token, 'x-tenant-id': tenantId } }
     setRole(person, role)
     return person
+  }
+  function browserSession(person, sessionId = randomUUID()) {
+    const claims = Buffer.from(JSON.stringify({ sub: person.user.id, session_id: sessionId })).toString('base64url')
+    const token = 'fixture.' + claims + '.' + randomBytes(16).toString('base64url')
+    subjects.set(token, person.user)
+    return { ...person, token, headers: { ...person.headers, authorization: 'Bearer ' + token } }
   }
   const tenantAuthority = {
     async membership(token, tenantId, subject, slug) {
@@ -51,7 +57,7 @@ export async function fixture(t, options = {}) {
         .map((user) => ({ user_id: user.id, email: user.email, role: memberships.get(tenantId + ':' + user.id) }))
     },
     async invitations() { return [] },
-    async audit() { return [] },
+    async audit(_token, tenantId) { return options.auditEvents?.get(tenantId) || [] },
     async setRole(token, tenantId, userId, role) {
       if (role === null) memberships.delete(tenantId + ':' + userId)
       else memberships.set(tenantId + ':' + userId, role)
@@ -69,10 +75,11 @@ export async function fixture(t, options = {}) {
   }
   const docx = buildDocxApp({ secret: docxSecret, logger: false })
   let rendererCalls = 0
-  const pdf = buildPdfApp({ secret: pdfSecret, rendererPassword, logger: false,
-    fetchImpl: async (_url, request) => {
+  const pdf = buildPdfApp({ secret: pdfSecret, rendererPassword, rendererUrl: options.renderer?.url, logger: false,
+    fetchImpl: async (url, request) => {
       rendererCalls++
       if (request.headers.Authorization !== 'Basic ' + Buffer.from('docuscripter:' + rendererPassword).toString('base64')) throw new Error('Missing renderer credentials')
+      if (options.renderer) return options.renderer.fetchImpl(url, request)
       if (options.rendererFailure) return new Response('Unavailable', { status: 503 })
       if (options.invalidPdf) return new Response('Not a PDF')
       return new Response('%PDF-1.7\n%%EOF', { headers: { 'Content-Type': 'application/pdf' } })
@@ -86,11 +93,13 @@ export async function fixture(t, options = {}) {
     if (options.onServiceResult) await options.onServiceResult()
     return new Response(result.rawPayload, { status: result.statusCode, headers: result.headers })
   }
-  const gatewayOptions = { storePath: join(dir, 'workspace.sqlite'), docxService: 'http://docx.invalid', pdfService: 'http://pdf.invalid', docxSecret, pdfSecret, authOptions, tenantAuthority, fetchImpl, logger: false, ...(options.organizationOptions ? { organizationOptions: options.organizationOptions } : {}) }
+  const gatewayOptions = { storePath: join(dir, 'workspace.sqlite'), docxService: 'http://docx.invalid', pdfService: 'http://pdf.invalid', docxSecret, pdfSecret, authOptions, tenantAuthority, fetchImpl, logger: false,
+    whatsappOptions: options.whatsappOptions || { configPath: null }, billingOptions: options.billingOptions,
+    ...(options.organizationOptions ? { organizationOptions: options.organizationOptions } : {}) }
   let gateway = await buildGatewayApp(gatewayOptions)
   t.after(async () => { await gateway.close(); await docx.close(); await pdf.close() })
   return {
-    get gateway() { return gateway }, docx, pdf, docxSecret, pdfSecret, principal, setRole,
+    get gateway() { return gateway }, docx, pdf, docxSecret, pdfSecret, principal, browserSession, setRole,
     organizationSlug: (id) => tenants.get(id)?.slug,
     get authCalls() { return authCalls }, get rendererCalls() { return rendererCalls },
     async restart() { await gateway.close(); gateway = await buildGatewayApp(gatewayOptions) },

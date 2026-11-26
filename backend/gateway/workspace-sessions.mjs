@@ -41,6 +41,7 @@ export function registerWorkspaceSessions(app, { auth, authority, organizations,
     // Consume before awaiting any external permission check: only one exchange can succeed.
     tickets.delete(request.body.code)
     const role = await authority.membership(ticket.accessToken, ticket.organizationId, ticket.subject, ticket.slug)
+    auth.assertSessionActive(ticket.subject, ticket.accessToken)
     if (!role) throw problem(403, 'You no longer have access to this organization.')
     return { access_token: ticket.accessToken, refresh_token: ticket.refreshToken, userId: ticket.subject }
   })
