@@ -1,8 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 import { fixture } from './helpers.mjs'
-import { organizationConfig, organizationUrl, organizationSlugFromHost, organizationSlugFromPath, validOrganizationSlug } from '../../shared/organization-url.mjs'
+import { canonicalDirectoryUrl, organizationConfig, organizationUrl, organizationSlugFromHost, organizationSlugFromPath, validOrganizationSlug } from '../../shared/organization-url.mjs'
 
 const config = organizationConfig('http://127.0.0.1:5173', 'docuscriptor.localhost')
 const challenge = (value) => createHash('sha256').update(value).digest('base64url')
@@ -15,6 +16,37 @@ function exchange(f, url, verifier, override = {}) {
   return f.gateway.inject({ method: 'POST', url: '/api/auth/workspace-session', headers: { host: target.host, origin: target.origin, ...override },
     payload: { code: new URLSearchParams(target.hash.slice(1)).get('workspace-code'), verifier } })
 }
+
+test('sign-out closes the shared browser session, refreshed tokens and outstanding handoffs across gateway restarts', async t => {
+  const f = await fixture(t), owner = f.principal('owner'), sessionId = randomUUID()
+  const directory = f.browserSession(owner, sessionId), workspace = f.browserSession(owner, sessionId)
+  const otherDevice = f.browserSession(owner)
+  const get = (url, person) => f.gateway.inject({ url, headers: person.headers })
+  const verifier = randomBytes(32).toString('base64url')
+  const pending = await link(f, directory, verifier)
+  assert.equal(pending.statusCode, 200)
+  assert.equal((await get('/api/auth/session', workspace)).json().id, owner.user.id)
+  const exit = await f.gateway.inject({ method: 'POST', url: '/api/auth/sign-out', headers: directory.headers })
+  assert.equal(exit.statusCode, 204)
+  assert.equal((await f.gateway.inject({ method: 'POST', url: '/api/auth/sign-out', headers: workspace.headers })).statusCode, 204)
+  assert.equal((await exchange(f, pending.json().url, verifier)).statusCode, 401)
+  await f.restart()
+  for (const person of [directory, workspace, f.browserSession(owner, sessionId)]) {
+    for (const path of ['/api/auth/session', '/api/organizations', '/api/jobs']) {
+      assert.equal((await get(path, person)).statusCode, 401)
+    }
+  }
+  assert.equal((await get('/api/jobs', otherDevice)).statusCode, 200)
+  assert.equal((await get('/api/auth/session', f.browserSession(owner))).statusCode, 200)
+  assert.equal((await f.gateway.inject({ method: 'POST', url: '/api/auth/sign-out' })).statusCode, 401)
+})
+
+test('opaque legacy credentials can sign out without changing another session for the same user', async t => {
+  const f = await fixture(t), owner = f.principal('owner'), another = f.browserSession(owner)
+  assert.equal((await f.gateway.inject({ method: 'POST', url: '/api/auth/sign-out', headers: owner.headers })).statusCode, 204)
+  assert.equal((await f.gateway.inject({ url: '/api/jobs', headers: owner.headers })).statusCode, 401)
+  assert.equal((await f.gateway.inject({ url: '/api/jobs', headers: another.headers })).statusCode, 200)
+})
 
 test('workspace addresses are unique subdomains; reserved and malformed labels are rejected', () => {
   for (const slug of ['acme','my-company','org123']) assert.equal(validOrganizationSlug(slug), true)
@@ -37,6 +69,29 @@ test('provider-hosted workspaces use validated organization paths', () => {
   assert.equal(organizationSlugFromPath('/'), null)
   for (const path of ['/org','/org/','/org/api','/org/Acme','/org/acme/nested','/org/%61cme']) assert.throws(() => organizationSlugFromPath(path))
   assert.throws(() => organizationConfig('https://docuscriptor.pages.dev','docuscriptor.pages.dev','invalid'))
+})
+
+test('known directory aliases enter the configured session origin and preserve the requested view', () => {
+  for (const alias of ['localhost', '[::1]', 'docuscriptor.localhost']) {
+    assert.equal(canonicalDirectoryUrl('http://' + alias + ':5173/editor.html?workspace=acme#templates', config),
+      config.appOrigin + '/editor.html?workspace=acme#templates')
+  }
+  const paths = organizationConfig('http://localhost:5173', 'docuscriptor.localhost', 'path')
+  assert.equal(canonicalDirectoryUrl('http://127.0.0.1:5173/org/acme#activity', paths), paths.appOrigin + '/org/acme#activity')
+  for (const url of [config.appOrigin, organizationUrl('acme', config), 'http://localhost:4173', 'https://localhost:5173', 'http://unrelated.invalid:5173']) {
+    assert.equal(canonicalDirectoryUrl(url, config), null)
+  }
+  const live = organizationConfig('https://app.example.org', 'example.org')
+  assert.equal(canonicalDirectoryUrl('https://example.org/', live), 'https://app.example.org/')
+  assert.equal(canonicalDirectoryUrl('https://localhost/', live), null)
+  assert.equal(canonicalDirectoryUrl('https://acme.example.org/', live), null)
+})
+
+test('the native development proxy retains the browser Host used to verify workspace sign-in tickets', async () => {
+  const { loadConfigFromFile } = await import('vite')
+  const path = fileURLToPath(new URL('../../frontend/vite.config.ts', import.meta.url))
+  const { config } = await loadConfigFromFile({ command: 'serve', mode: 'test' }, path)
+  assert.equal(config.server.proxy['/api'].changeOrigin, false)
 })
 
 test('path-mode API binds the workspace slug to current membership and tenant ID', async (t) => {

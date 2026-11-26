@@ -1,17 +1,37 @@
+{
+  log default {
+    format filter {
+      request>uri query {
+        delete hub.verify_token
+      }
+      request>headers delete
+    }
+  }
+}
+
 :4173 {
   encode gzip zstd
   header {
     X-Content-Type-Options nosniff
     Referrer-Policy no-referrer
-    X-Frame-Options DENY
   }
 
+  @preview path /preview.html /preview
+  @outsidePreview not path /preview.html /preview
+  header @outsidePreview X-Frame-Options DENY
+  handle @preview {
+    header X-Frame-Options SAMEORIGIN
+    header Content-Security-Policy "default-src 'self'; connect-src 'self' data: blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; worker-src 'self' blob:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"
+    root * /srv
+    rewrite * /preview.html
+    file_server
+  }
   handle /api/* {
     reverse_proxy gateway:4000
   }
   @editor path /editor.html /editor
   handle @editor {
-    header Content-Security-Policy "default-src 'self'; connect-src 'self' data: blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+    header Content-Security-Policy "default-src 'self'; connect-src 'self' {$SUPABASE_PUBLIC_URL} data: blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
     root * /srv
     file_server
   }

@@ -1,0 +1,11 @@
+services:
+  gateway:
+    environment:
+      WHATSAPP_CONFIG_FILE: /run/secrets/whatsapp.json
+    volumes:
+      - type: bind
+        source: ${WHATSAPP_CONFIG_FILE:?Set an absolute path to your WhatsApp configuration file}
+        target: /run/secrets/whatsapp.json
+        read_only: true
+        bind:
+          create_host_path: false

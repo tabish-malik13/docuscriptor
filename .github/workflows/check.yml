@@ -54,3 +54,4 @@ jobs:
         run: |
           docker compose config --quiet
           docker compose -f compose.yaml -f compose.preview.yaml config --quiet
+          WHATSAPP_CONFIG_FILE=/tmp/whatsapp.json docker compose -f compose.yaml -f compose.whatsapp.yaml config --quiet

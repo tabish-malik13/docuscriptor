@@ -5,6 +5,8 @@ import { setTimeout } from 'node:timers/promises'
 import { buildPdfApp } from '../pdf/app.mjs'
 import { signServiceRequest } from '../shared/service-authorization.mjs'
 import { starterTemplate } from '../docx/starter-templates.mjs'
+import PizZip from 'pizzip'
+import { fixture } from './helpers.mjs'
 
 const rendererUrl = process.env.GOTENBERG_TEST_URL
 
@@ -35,4 +37,24 @@ test('real Gotenberg rejects unauthenticated calls and converts HTML and DOCX', 
     assert.ok(response.rawPayload.length > 1000)
     assert.equal(response.rawPayload.subarray(0, 5).toString(), '%PDF-')
   }
+
+  const f = await fixture(t, { renderer: { url: rendererUrl, password, fetchImpl: fetch } })
+  const { headers } = f.principal()
+  const rows = ['00041', '00042'].map((id) => ({ name: id, values: {
+    recipient_name: 'Recipient ' + id, course_name: 'Document processing', completion_date: '2026-11-26',
+    issuer_name: 'Integration test', certificate_id: id,
+  } }))
+  const create = await f.gateway.inject({ method: 'POST', url: '/api/batches', headers, payload: { templateId: 'certificate', format: 'PDF', rows } })
+  assert.equal(create.statusCode, 201, create.body)
+  const path = '/api/batches/' + create.json().id
+  for (let i = 0; i < rows.length; i++) {
+    const next = await f.gateway.inject({ method: 'POST', url: path + '/next', headers })
+    assert.equal(next.statusCode, 200, next.body)
+    assert.equal(next.json().ready, i + 1)
+  }
+  const download = await f.gateway.inject({ method: 'GET', url: path + '/download', headers })
+  assert.equal(download.statusCode, 200)
+  const zip = new PizZip(download.rawPayload)
+  assert.deepEqual(Object.keys(zip.files), rows.map(row => row.name + '.pdf'))
+  for (const entry of Object.values(zip.files)) assert.equal(entry.asNodeBuffer().subarray(0, 5).toString(), '%PDF-')
 })

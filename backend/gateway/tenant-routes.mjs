@@ -45,7 +45,14 @@ export function registerTenantRoutes(app, { auth, authority, store }) {
     await authority.revoke(request.accessToken, request.tenantId, request.params.id)
     return reply.code(204).send()
   })
-  app.get('/api/tenant/audit', admin, async (request) => ({ items: await authority.audit(request.accessToken, request.tenantId) }))
+  app.get('/api/tenant/audit', admin, async (request) => {
+    const tenantEvents = await authority.audit(request.accessToken, request.tenantId)
+    const events = [...tenantEvents, ...store.clientAudit(request.tenantId)]
+    // Each source already orders by timestamp and descending numeric ID. The stable
+    // sort preserves that order and places Supabase events first within a shared millisecond.
+    events.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+    return { items: events.slice(0, 50) }
+  })
   app.get('/api/personal-records', account, async (request) => store.legacySummary(request.subject))
   app.post('/api/tenant/import-personal', { ...admin, schema: { body: {
     type: 'object', required: ['shareWithTenant'], additionalProperties: false, properties: { shareWithTenant: { const: true } },

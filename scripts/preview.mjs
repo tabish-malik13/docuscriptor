@@ -11,6 +11,8 @@ organizationConfig(origin, new URL(origin).hostname, 'path')
 if (spawnSync('cloudflared', ['--version'], { stdio: 'ignore' }).status !== 0) throw new Error('Install the open-source cloudflared CLI first. See docs/deployment.md.')
 const env = { ...process.env, PUBLIC_ORGANIZATION_ROUTING: 'path', PUBLIC_ORGANIZATION_BASE_DOMAIN: new URL(origin).hostname }
 const args = ['compose','-p','docuscripter-preview','-f','compose.yaml','-f','compose.preview.yaml']
+if (env.WHATSAPP_CONFIG_FILE) args.push('-f', 'compose.whatsapp.yaml')
+if (env.BILLING_LICENSES_FILE) args.push('-f', 'compose.licenses.yaml')
 const build = spawnSync('docker', [...args,'up','--build','-d','web'], { env, stdio: 'inherit' })
 if (build.status !== 0) process.exit(build.status || 1)
 let ready = false

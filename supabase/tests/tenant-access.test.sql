@@ -41,6 +41,7 @@ select public.ds_test_error($q$select public.ds_set_member_role(current_setting(
 select set_config('test.invite_admin',public.ds_invite_member(current_setting('test.tenant_a')::uuid,current_setting('test.admin')||'@test.invalid','admin')::text,true);
 select set_config('test.invite_viewer',public.ds_invite_member(current_setting('test.tenant_a')::uuid,current_setting('test.viewer')||'@test.invalid','viewer')::text,true);
 select public.ds_test_assert((select count(*)=2 from public.ds_invitations),'administrator can view pending invitations');
+select public.ds_rename_tenant(current_setting('test.tenant_a')::uuid,'Renamed organization A');
 select public.ds_test_error($q$update public.ds_memberships set role='viewer'$q$,'42501');
 
 select set_config('request.jwt.claims',jsonb_build_object('sub',current_setting('test.other'),'role','authenticated')::text,true);
@@ -53,6 +54,7 @@ select public.ds_test_error($q$select public.ds_rename_tenant(current_setting('t
 
 select set_config('request.jwt.claims',jsonb_build_object('sub',current_setting('test.viewer'),'role','authenticated')::text,true);
 select public.ds_test_assert((select count(*)=1 from public.ds_invitations),'recipient can see only their own invitation');
+select public.ds_test_assert((select tenant_name='Renamed organization A' from public.ds_invitations where id=current_setting('test.invite_viewer')::uuid),'pending invitations show the current organization name to recipients');
 select public.ds_accept_invitation(current_setting('test.invite_viewer')::uuid);
 select public.ds_test_assert(docuscripter_private.tenant_role(current_setting('test.tenant_a')::uuid)='viewer','accepted role belongs to that tenant');
 select public.ds_test_assert((select count(*)=1 from public.ds_memberships),'viewer cannot list other members');

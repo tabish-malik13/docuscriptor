@@ -5,12 +5,49 @@ import { DatabaseSync } from 'node:sqlite'
 import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Readable } from 'node:stream'
 import { fixture, invoiceValues } from './helpers.mjs'
 import { starterTemplate } from '../docx/starter-templates.mjs'
 import { createStore } from '../gateway/store.mjs'
 import { createTenantAuthority } from '../gateway/tenant-authority.mjs'
 
 const generation = { templateId: 'invoice', values: invoiceValues() }
+
+test('losing processing access during an upload prevents dispatch to the renderer', async (t) => {
+  const f = await fixture(t), member = f.principal()
+  const payload = new Readable({ read() {
+    f.setRole(member, 'viewer')
+    this.push(JSON.stringify({ filename: 'document.html', file: Buffer.from('<p>Hello</p>').toString('base64') }))
+    this.push(null)
+  } })
+  const denied = await f.gateway.inject({ method: 'POST', url: '/api/pdf/convert', payload,
+    headers: { ...member.headers, 'content-type': 'application/json' } })
+  assert.equal(denied.statusCode, 403)
+  assert.equal(f.rendererCalls, 0)
+  assert.deepEqual((await f.gateway.inject({ url: '/api/jobs', headers: member.headers })).json().items, [])
+})
+
+test('another tenant can process documents while one tenant occupies its concurrency quota', async (t) => {
+  const blocked = Promise.withResolvers(), release = Promise.withResolvers()
+  let count = 0
+  const f = await fixture(t, { onServiceResult: async () => {
+    count++
+    if (count === 2) blocked.resolve()
+    if (count <= 2) await release.promise
+  } })
+  const member = f.principal(), other = f.principal()
+  const generate = (person) => f.gateway.inject({ method: 'POST', url: '/api/docx/generate', payload: generation, headers: person.headers })
+  const pending = [generate(member), generate(member)]
+  try {
+    await blocked.promise
+    const denied = await generate(member)
+    assert.equal(denied.statusCode, 429)
+    assert.ok(Number(denied.headers['retry-after']) > 0)
+    assert.equal((await generate(other)).statusCode, 200)
+  } finally { release.resolve() }
+  for (const response of await Promise.all(pending)) assert.equal(response.statusCode, 200)
+  assert.equal((await generate(member)).statusCode, 200)
+})
 
 test('tenant selection and membership are mandatory; account discovery needs only authentication', async (t) => {
   const f = await fixture(t), person = f.principal()

@@ -4,5 +4,7 @@ import '@fontsource-variable/inter'
 import '../shared/base.css'
 import './editor.css'
 import { DocxEditorPage } from './DocxEditorPage'
+import { canonicalEntry } from '../workspace/organization-location'
 
-createRoot(document.getElementById('root')!).render(<DocxEditorPage />)
+if (canonicalEntry) window.location.replace(canonicalEntry)
+else createRoot(document.getElementById('root')!).render(<DocxEditorPage />)

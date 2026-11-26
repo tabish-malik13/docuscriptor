@@ -1,0 +1,49 @@
+.account-directory { background: #f7f8f8; min-height: 100dvh; }
+.directory-masthead { background: #fff; min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px clamp(20px, 4vw, 64px); border-bottom: 1px solid var(--border); }
+.directory-user, .directory-actions, .directory-status, .directory-error { display: flex; align-items: center; gap: 12px; }
+.directory-user { min-width: 0; font-size: 13px; }
+.directory-user > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.directory-body { width: min(100%, 984px); margin: 0 auto; padding: clamp(48px, 9vh, 100px) clamp(20px, 5vw, 52px) 64px; }
+.directory-heading { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 18px; margin-bottom: 28px; }
+.directory-heading h1, .directory-unavailable h1 { font-size: clamp(30px, 4.3vw, 44px); font-weight: 620; letter-spacing: -.05em; }
+.directory-heading p, .directory-unavailable p { margin-top: 9px; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.directory-unavailable p { margin-bottom: 22px; }
+.directory-body h2 { font-size: 21px; font-weight: 620; letter-spacing: -.033em; }
+.directory-status { font-size: 14px; color: var(--muted); }
+.directory-error { flex-wrap: wrap; }
+.directory-list, .directory-invitations ul { margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
+.directory-list li + li, .directory-invitations li + li { border-top: 1px solid var(--border); }
+.directory-workspace { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 16px; align-items: center; padding: 18px 20px; color: inherit; text-decoration: none; }
+.directory-list li:first-child a { border-radius: 14px 14px 0 0; }
+.directory-list li:last-child a { border-radius: 0 0 14px 14px; }
+.directory-list li:only-child a { border-radius: 14px; }
+.directory-workspace:hover { background: #f3f6fc; }
+.directory-glyph { color: var(--accent-dark); background: #eaf0fc; display: grid; place-items: center; width: 42px; height: 42px; border-radius: 11px; }
+.directory-workspace-name { display: grid; gap: 5px; overflow-wrap: anywhere; }
+.directory-workspace-name strong, .directory-invitations strong { font-size: 15px; font-weight: 620; }
+.directory-workspace-name small, .directory-workspace-role, .directory-invitations p { font-size: 13px; color: var(--muted); }
+.directory-workspace > svg { color: var(--accent-dark); }
+.directory-form { max-width: 610px; margin-bottom: 26px; background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: clamp(20px, 4vw, 32px); }
+.directory-form fieldset { display: grid; gap: 18px; margin: 22px 0 0; padding: 0; border: 0; min-width: 0; }
+.directory-form .field { display: grid; gap: 8px; margin: 0; font-size: 13px; font-weight: 600; }
+.directory-form input { width: 100%; min-width: 0; min-height: 42px; border: 1px solid #89909a; border-radius: 7px; padding: 9px 11px; font-size: 15px; }
+.directory-address { display: flex; align-items: center; border: 1px solid #89909a; border-radius: 7px; background: #f5f6f8; }
+.directory-address input { flex: 1; border: 0; min-width: 78px; }
+.directory-address > span { padding: 8px 10px; min-width: 0; overflow-wrap: anywhere; line-height: 1.5; color: var(--muted); font-weight: 450; }
+.directory-help { color: var(--muted); font-size: 12px; margin-top: -10px; line-height: 1.6; }
+.directory-invitations { margin-top: 32px; }
+.directory-invitations > p { margin: 6px 0 16px; overflow-wrap: anywhere; }
+.directory-invitations li { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; padding: 16px 20px; }
+.directory-invitations li > div { min-width: 0; overflow-wrap: anywhere; }
+.directory-invitations li p { margin-top: 4px; }
+@media (max-width: 580px) {
+  .directory-masthead { min-height: 60px; }
+  .directory-user > span { display: none; }
+  .directory-heading { align-items: flex-start; }
+  .directory-body { padding-top: 38px; }
+  .directory-workspace { grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px; padding: 14px; }
+  .directory-glyph { grid-area: 1 / 1 / 3 / 2; }
+  .directory-workspace-role { grid-area: 2 / 2; font-size: 12px; }
+  .directory-workspace > svg { grid-area: 1 / 3 / 3 / 4; }
+  .directory-form input { font-size: 16px; }
+}

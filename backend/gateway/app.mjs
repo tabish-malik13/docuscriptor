@@ -1,15 +1,22 @@
 import { fileURLToPath } from 'node:url'
-import rateLimit from '@fastify/rate-limit'
 import { createService } from '../shared/http-service.mjs'
 import { requireSecret } from '../shared/service-authorization.mjs'
 import { registerDocumentRoutes } from './document-routes.mjs'
 import { createAuthorizers } from './authorize-document-processing.mjs'
-import { createStore } from './store.mjs'
+import { createStore, problem } from './store.mjs'
 import { createTenantAuthority } from './tenant-authority.mjs'
 import { organizationConfig, organizationSlugFromHost, validOrganizationSlug } from '../../shared/organization-url.mjs'
 import { registerWorkspaceSessions } from './workspace-sessions.mjs'
-import { problem } from './store.mjs'
 import { registerTenantRoutes } from './tenant-routes.mjs'
+import { registerClientRoutes } from './client-routes.mjs'
+import { credentialDigest } from './client-credentials.mjs'
+import { registerGatewayRateLimits, rateLimitTrustedProxies } from './rate-limits.mjs'
+import { loadWhatsAppConfig, registerWhatsApp } from '../whatsapp/webhook.mjs'
+import { openWhatsAppConnections } from '../whatsapp/connections.mjs'
+import { registerWhatsAppConnectionRoutes } from '../whatsapp/connection-routes.mjs'
+import { createLicenseCatalog } from '../billing/catalog.mjs'
+import { createBilling } from '../billing/billing.mjs'
+import { registerBillingRoutes } from '../billing/routes.mjs'
 
 export async function buildGatewayApp({
   storePath = process.env.DATA_PATH || fileURLToPath(new URL('../../.data/workspace.sqlite', import.meta.url)),
@@ -18,29 +25,30 @@ export async function buildGatewayApp({
   docxSecret = process.env.DOCX_SERVICE_SECRET,
   pdfSecret = process.env.PDF_SERVICE_SECRET,
   organizationOptions = organizationConfig(process.env.APP_ORIGIN || process.env.VITE_APP_ORIGIN || 'http://127.0.0.1:5173', process.env.ORGANIZATION_BASE_DOMAIN || process.env.VITE_ORGANIZATION_BASE_DOMAIN || 'docuscriptor.localhost', process.env.ORGANIZATION_ROUTING || process.env.VITE_ORGANIZATION_ROUTING || 'subdomain'),
-  authOptions, tenantAuthority, fetchImpl = fetch, logger,
+  authOptions, tenantAuthority, fetchImpl = fetch, logger, rateLimits, whatsappOptions, billingOptions,
 } = {}) {
   requireSecret(docxSecret, 'DOCX_SERVICE_SECRET')
   requireSecret(pdfSecret, 'PDF_SERVICE_SECRET')
   if (docxSecret === pdfSecret) throw new Error('Use different secrets for DOCX and PDF services.')
   const authority = tenantAuthority || createTenantAuthority(authOptions)
-  const auth = createAuthorizers({ ...authOptions, resolveTenant: authority.membership, requireOrganizationSlug: organizationOptions.routing === 'path' })
-  const app = createService({ logger })
+  const app = createService({ logger, trustProxy: rateLimitTrustedProxies() })
+  const catalog = createLicenseCatalog(billingOptions?.env ?? process.env)
+  const billing = createBilling({ ...billingOptions, storePath, catalog })
+  app.addHook('onClose', async () => billing.close())
+  const store = createStore(storePath, { limitsForTenant: tenant => catalog.limits(billing.planForTenant(tenant)) })
+  app.addHook('onClose', async () => store.close())
+  const auth = createAuthorizers({ ...authOptions, store, resolveTenant: authority.membership, requireOrganizationSlug: organizationOptions.routing === 'path' })
   app.decorateRequest('subject', null)
   app.decorateRequest('canProcess', false)
   app.decorateRequest('accessToken', null)
   app.decorateRequest('email', null)
+  app.decorateRequest('displayName', null)
   app.decorateRequest('tenantId', null)
   app.decorateRequest('tenantRole', null)
   app.decorateRequest('organizationSlug', null)
-  await app.register(rateLimit, {
-    global: true, hook: 'preParsing', max: 120, timeWindow: '1 minute',
-    keyGenerator: (request) => request.subject ? (request.tenantId || 'account') + ':' + request.subject : request.ip,
-  })
-  const limitAuthentication = app.createRateLimit({
-    max: 120, timeWindow: '1 minute', keyGenerator: (request) => 'auth:' + request.ip,
-  })
-  app.addHook('onRequest', async (request, reply) => {
+  app.decorateRequest('clientScopes', null)
+  registerGatewayRateLimits(app, { storePath, options: rateLimits })
+  app.addHook('onRequest', async (request) => {
     try {
       if (organizationOptions.routing === 'path') {
         const slug = request.headers['x-organization-slug']
@@ -48,16 +56,25 @@ export async function buildGatewayApp({
         request.organizationSlug = slug || null
       } else request.organizationSlug = organizationSlugFromHost(request.headers.host, organizationOptions)
     } catch { throw problem(400, 'This organization workspace address is invalid.') }
-    const result = await limitAuthentication(request)
-    if (result.isExceeded) {
-      return reply.code(429).header('Retry-After', result.ttlInSeconds).send({ message: 'Too many requests. Try again shortly.' })
-    }
   })
-  const store = createStore(storePath)
-  app.addHook('onClose', async () => store.close())
   app.get('/api/health', async () => ({ status: 'ok' }))
+  app.get('/api/auth/session', { onRequest: auth.requireIdentity }, async req => ({
+    id: req.subject, name: req.displayName, email: req.email,
+  }))
+  app.post('/api/auth/sign-out', { onRequest: auth.requireSignOutIdentity }, async (req, reply) => {
+    auth.endSession(req)
+    return reply.code(204).send()
+  })
   registerDocumentRoutes(app, { store, auth, docxService, pdfService, docxSecret, pdfSecret, fetchImpl })
   registerTenantRoutes(app, { store, auth, authority })
+  registerClientRoutes(app, { store, auth, authority })
+  await registerBillingRoutes(app, { auth, authority, organizations: organizationOptions, billing, store })
   if (organizationOptions.routing !== 'path') registerWorkspaceSessions(app, { auth, authority, organizations: organizationOptions })
+  const configPath = whatsappOptions?.configPath === undefined ? process.env.WHATSAPP_CONFIG_FILE : whatsappOptions.configPath
+  const legacyConfig = loadWhatsAppConfig(configPath)
+  const connections = openWhatsAppConnections({ storePath, configuredKey: whatsappOptions?.encryptionKey, legacyConfig })
+  app.addHook('onClose', async () => connections.close())
+  registerWhatsAppConnectionRoutes(app, { connections, store, auth, authority, appOrigin: organizationOptions.appOrigin })
+  await registerWhatsApp(app, { ...whatsappOptions, connections, legacyConfig, storePath, resolveClientToken: (token) => store.resolveClientToken(credentialDigest(token)) })
   return app
 }

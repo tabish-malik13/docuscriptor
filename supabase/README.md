@@ -4,7 +4,7 @@ The application supports hosted or separately self-hosted Supabase. The selected
 
 ## Installed organization authority
 
-The hosted project has migration `20261108184608_organization_workspaces` applied. Its reviewed source is in `migrations/20261108184608_organization_workspaces.sql` and `tenant-access.sql`. Do not run this initial schema again on that project. These installation instructions are for a fresh hosted or self-hosted project.
+The hosted project has migration `20261108184608_organization_workspaces` applied. Its reviewed source is in [the original migration](migrations/20261108184608_organization_workspaces.sql). Do not run the initial schema again on that project. Deployments that already use it can apply [the pending invitation name migration](migrations/20261126000000_refresh_invitation_names.sql) to show the current organization name to invitees after a rename. It also updates pending invitations that already carry an old name. Fresh installations can use the complete schema below.
 
 ## Install on another project
 
@@ -32,13 +32,15 @@ Organization administrators create invitations in **Organization settings**. Inv
 - Operators generate/convert documents and manage content they created. All members can download shared tenant content.
 - Viewers only read and download tenant content. Members may leave their tenant, subject to the last-owner rule.
 
-Supabase RLS protects the tenant directory, memberships, invitation recipients and administrator audit. The gateway uses the caller's bearer token and publishable key for these operations, so it cannot bypass RLS. Membership is queried on every document request and again before persisting a processing result. It is never inferred from a client-selected tenant ID or from JWT metadata.
+Supabase RLS protects the tenant directory, memberships, invitation recipients and administrator audit. The gateway uses the signed-in user's bearer token and publishable key for these operations. It checks membership for each human document request and again before persisting a processing result.
+
+Owners and admins can issue API clients for their workspace. The gateway stores these organization-owned grants in its SQLite volume and validates token expiry, revocation, tenant and operation scope for each machine request. It checks the token again before saving a processing result. Removing the administrator who issued a client preserves that client's grant. Revoke the workspace's clients before decommissioning a tenant directly in Supabase. Restoring an older gateway backup can also restore earlier grants, so rotate or revoke affected credentials before reopening traffic.
 
 Documents and template bytes stay in the gateway's local SQLite volume, with `tenant_id` filters on every operation and per-tenant quotas. They are accessed exclusively through the gateway, not the Supabase Data API. DOCX and PDF service assertions also include the verified tenant ID. One gateway process per SQLite database remains the deployment model.
 
 ## Existing personal data
 
-On first startup, the local database upgrades to version 2. Existing rows retain their creator IDs and have no tenant assigned, making them inaccessible to tenant document endpoints. A tenant owner can explicitly import **their own** old records in Tenant administration. The app explains that importing shares those files with every tenant member and requires confirmation. It never assigns records based on the first tenant a user visits. Back up the SQLite volume before upgrading.
+The gateway upgrades its SQLite database to version 4 on startup. Version 4 adds batches, queued rows and terminal input cleanup. These tables use the existing tenant and caller identities and need no new Supabase SQL. Version 3 added the API client, access-token and credential audit tables. Each creation, secret rotation and revocation records the tenant, client, acting administrator and time in the same transaction. Organization settings shows the latest 50 changes across this history and the Supabase tenant audit. The version 2 migration assigns previously personal records to no tenant and retains their creator IDs. A tenant owner can explicitly import **their own** old records in Tenant administration. The app explains that importing shares those files with every tenant member and requires confirmation. Back up the SQLite volume before upgrading.
 
 ## Database tests
 
