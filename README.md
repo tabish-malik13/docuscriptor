@@ -2,6 +2,8 @@
 
 A proprietary document workspace built with self-hostable open-source components: Supabase Auth, a browser DOCX editor, private DOCX generation and PDF conversion services, and SQLite storage. See [project rules](AGENTS.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
 
+To understand the codebase, follow one invoice from the browser to the saved Word file, then explore organization permissions, template revisions, bulk generation, integrations, and recovery in the [end-to-end project walkthrough](docs/README.md).
+
 ## Local editor
 
 Use Node.js 24 or later:
