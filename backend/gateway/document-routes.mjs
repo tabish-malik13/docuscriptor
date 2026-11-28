@@ -17,7 +17,7 @@ const generationSchema = {
     { required: ['savedTemplateId'], not: { anyOf: ['file', 'filename', 'templateId'].map((key) => ({ required: [key] })) } },
   ],
 }
-const starterNames = { invoice: 'Invoice', letter: 'Business letter', brief: 'Project brief' }
+const starterNames = { invoice: 'Invoice', letter: 'Business letter', brief: 'Project brief', certificate: 'Completion certificate' }
 const outputName = (source, kind) => source.replace(/\.[^.]+$/, '').slice(0, 200) + '.' + kind.toLowerCase()
 
 export function registerDocumentRoutes(app, { store, auth, docxService, pdfService, docxSecret, pdfSecret, fetchImpl = fetch, processingLimit = 4 }) {

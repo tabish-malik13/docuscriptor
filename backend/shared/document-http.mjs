@@ -1,3 +1,4 @@
+import { starterLayouts } from '../../shared/starter-layouts.mjs'
 import { InputError } from '../../shared/problems.mjs'
 import { Buffer } from 'node:buffer'
 
@@ -38,7 +39,7 @@ export const docxSchema = {
   ],
   properties: {
     ...uploadFields,
-    templateId: { type: 'string', enum: ['invoice', 'letter', 'brief'] },
+    templateId: { type: 'string', enum: Object.keys(starterLayouts) },
     values: {
       type: 'object',
       maxProperties: 64,
