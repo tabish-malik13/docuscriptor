@@ -20,7 +20,7 @@ import { TemplatesPage } from './TemplatesPage'
 
 type Dialog = 'search' | 'notifications' | 'new'
 
-export function Workspace({ identity: user }: { identity: Identity }) {
+export function Workspace({ identity: user, canSwitchOrganization }: { identity: Identity; canSwitchOrganization: boolean }) {
   const { api, tenant, onChange: onTenantChange } = useTenantApi()
   const identity = { ...user, role: roleLabels[tenant.role], canProcess: tenant.role !== 'viewer' }
   const canAdmin = tenant.role === 'owner' || tenant.role === 'admin'
@@ -142,7 +142,7 @@ export function Workspace({ identity: user }: { identity: Identity }) {
           <div className="nav-group"><span className="label">LIBRARY</span>{(['templates', 'activity'] as const).filter(supportedView).map(nav)}{canAdmin && nav('team')}</div>
         </nav>
         <div className="sidebar-bottom">
-          <a className="nav-item" href={directoryUrl}>Your organizations</a>
+          {canSwitchOrganization && <a className="nav-item" href={directoryUrl}>Switch organization</a>}
           <button className="nav-item help-link" onClick={() => go('account')}><CircleHelp size={18} strokeWidth={1.8} /> Workspace access</button>
           <button className="account-chip" onClick={() => go('account')}><span className="avatar">{initials}</span>
             <span><strong>{identity.name}</strong><small>{identity.role}</small></span><ChevronRight size={15} className="account-chevron" />

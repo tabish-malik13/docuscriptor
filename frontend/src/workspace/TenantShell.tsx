@@ -26,10 +26,11 @@ export function OrganizationShell({ identity }: { identity: Identity }) {
   const refresh = useCallback(async () => {
     const version = ++loadVersion.current
     try {
-      const [memberships, pending] = await Promise.all([
-        api('/api/organizations').then((response) => response.json()) as Promise<{ items: Tenant[] }>,
-        currentOrganizationSlug ? Promise.resolve({ items: [] }) : api('/api/invitations').then((response) => response.json()) as Promise<{ items: Invitation[] }>,
-      ])
+      const memberships = await (await api('/api/organizations')).json() as { items: Tenant[] }
+      if (version !== loadVersion.current) return
+      const pending = !currentOrganizationSlug && !returningTo && memberships.items.length !== 1
+        ? await (await api('/api/invitations')).json() as { items: Invitation[] }
+        : { items: [] }
       if (version !== loadVersion.current) return
       setOrganizations(memberships.items); setInvitations(pending.items); setError('')
     } catch (cause) {
@@ -37,7 +38,7 @@ export function OrganizationShell({ identity }: { identity: Identity }) {
       setOrganizations([]); setInvitations([])
       setError(cause instanceof Error ? cause.message : 'Your organizations could not be loaded.')
     } finally { if (version === loadVersion.current) setLoading(false) }
-  }, [])
+  }, [returningTo])
   useEffect(() => {
     void refresh()
     const check = () => { if (document.visibilityState === 'visible') void refresh() }
@@ -47,6 +48,13 @@ export function OrganizationShell({ identity }: { identity: Identity }) {
   }, [refresh])
   const changed = useCallback(() => { void refresh() }, [refresh])
   const organization = organizations.find((entry) => entry.slug === currentOrganizationSlug)
+  const defaultSlug = !currentOrganizationSlug && !returningTo && !loading && !error && organizations.length === 1
+    ? organizations[0].slug
+    : null
+
+  useEffect(() => {
+    if (defaultSlug) window.location.replace(workspaceUrl(defaultSlug))
+  }, [defaultSlug])
 
   useEffect(() => {
     if (loading || error || currentOrganizationSlug || !returningTo) return
@@ -61,7 +69,11 @@ export function OrganizationShell({ identity }: { identity: Identity }) {
       })).json() as { url: string }
       return result.url
     })()
-    void transition.current.then((url) => { if (active) { history.replaceState(null, '', '/'); window.location.replace(url) } }).catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : 'The workspace could not be opened.') })
+    void transition.current.then((url) => { if (active) { history.replaceState(null, '', '/'); window.location.replace(url) } }).catch((cause) => {
+      if (!active) return
+      transition.current = null
+      setError(cause instanceof Error ? cause.message : 'The workspace could not be opened.')
+    })
     return () => { active = false }
   }, [loading, error, returningTo, organizations])
 
@@ -82,16 +94,19 @@ export function OrganizationShell({ identity }: { identity: Identity }) {
   if (currentOrganizationSlug) {
     if (loading) return <div className="organization-directory"><Brand /><p role="status">Opening your workspace…</p></div>
     if (!organization || error) return <div className="organization-directory"><Brand /><section className="panel workflow-form"><h1>Workspace unavailable</h1><p role="alert">{error || 'This organization workspace is unavailable, or your account does not have access.'}</p><a className="button primary" href={directoryUrl}>Your organizations</a></section></div>
-    return <TenantProvider tenant={organization} onChange={changed}><Workspace key={organization.id + ':' + organization.role} identity={identity} /></TenantProvider>
+    return <TenantProvider tenant={organization} onChange={changed}><Workspace key={organization.id + ':' + organization.role} identity={identity} canSwitchOrganization={organizations.length > 1} /></TenantProvider>
   }
+  if (loading || defaultSlug || (returningTo && !error)) {
+    return <div className="organization-directory"><Brand /><p role="status">Opening your workspace…</p></div>
+  }
+  const hasOrganizations = organizations.length > 0
   return <div className="organization-directory">
     <header className="directory-header"><Brand /><div><span>{identity.name}</span><button className="button secondary" disabled={busy} onClick={() => { void run(signOut) }}><LogOut size={16} /> Sign out</button></div></header>
-    <div className="page-heading"><div><span className="label">YOUR WORKSPACES</span><h1>Your organizations</h1><p>Open your organization’s workspace to create, edit, and share documents.</p></div>
+    <div className="page-heading"><div><h1>{hasOrganizations ? 'Your organizations' : 'Set up your workspace'}</h1>
+      <p>{hasOrganizations ? 'Choose a workspace to open its documents and templates.' : 'Create an organization or accept an invitation to get started.'}</p></div>
       {!returningTo && <button className="button primary" disabled={busy || loading} onClick={() => setCreating(!creating)}><Plus size={17} /> Create organization</button>}
     </div>
-    {loading && <p role="status">Loading your organizations…</p>}
     {error && <div className="error-box" role="alert">{error}<button className="button secondary" disabled={busy} onClick={changed}>Try again</button>{returningTo && <a className="button secondary" href={directoryUrl}>Your organizations</a>}</div>}
-    {returningTo && !error && <p role="status">Opening your organization workspace…</p>}
     {!returningTo && (creating || (!loading && !error && organizations.length === 0 && invitations.length === 0)) && <form className="panel workflow-form organization-create" onSubmit={create}>
       <h2>Create your organization</h2><p className="form-note">Give your team its own workspace address. Only members you invite can access its documents.</p>
       <fieldset disabled={busy || loading}>
@@ -101,7 +116,7 @@ export function OrganizationShell({ identity }: { identity: Identity }) {
         <button className="button primary" type="submit">{busy ? 'Creating organization…' : 'Create organization'}</button>
       </fieldset>
     </form>}
-    {!returningTo && <div className="organization-grid">{organizations.map((entry) => <a className="panel organization-card" href={workspaceUrl(entry.slug)} key={entry.id}>
+    {!returningTo && hasOrganizations && <div className="organization-grid">{organizations.map((entry) => <a className="panel organization-card" href={workspaceUrl(entry.slug)} key={entry.id}>
       <span className="icon-chip violet"><Building2 size={23} /></span><h2>{entry.name}</h2><p>{workspaceUrl(entry.slug).replace(/^https?:\/\//, '')}</p><span className="organization-open">Open workspace <ArrowRight size={16} /></span>
     </a>)}</div>}
     {!returningTo && invitations.length > 0 && <section className="panel workflow-form"><h2>Invitations for {identity.email}</h2>
