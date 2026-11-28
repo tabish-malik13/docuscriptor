@@ -5,7 +5,7 @@ import { Brand } from '../shared/Brand'
 import { suggestOrganizationSlug, validOrganizationSlug } from '../../../shared/organization-url.mjs'
 import { api } from './api'
 import { TenantProvider, type Tenant } from './TenantContext'
-import { currentOrganizationSlug, workspaceConfig, workspaceUrl } from './organization-location'
+import { currentOrganizationSlug, directoryUrl, workspaceConfig, workspaceUrl } from './organization-location'
 import { Workspace } from './Workspace'
 
 type Invitation = { id: string; tenant_id: string; tenant_name: string; email: string; role: string; expires_at: string }
@@ -81,7 +81,7 @@ export function OrganizationShell({ identity }: { identity: Identity }) {
   }
   if (currentOrganizationSlug) {
     if (loading) return <div className="organization-directory"><Brand /><p role="status">Opening your workspace…</p></div>
-    if (!organization || error) return <div className="organization-directory"><Brand /><section className="panel workflow-form"><h1>Workspace unavailable</h1><p role="alert">{error || 'This organization workspace is unavailable, or your account does not have access.'}</p><a className="button primary" href={workspaceConfig.appOrigin}>Your organizations</a></section></div>
+    if (!organization || error) return <div className="organization-directory"><Brand /><section className="panel workflow-form"><h1>Workspace unavailable</h1><p role="alert">{error || 'This organization workspace is unavailable, or your account does not have access.'}</p><a className="button primary" href={directoryUrl}>Your organizations</a></section></div>
     return <TenantProvider tenant={organization} onChange={changed}><Workspace key={organization.id + ':' + organization.role} identity={identity} /></TenantProvider>
   }
   return <div className="organization-directory">
@@ -90,7 +90,7 @@ export function OrganizationShell({ identity }: { identity: Identity }) {
       {!returningTo && <button className="button primary" disabled={busy || loading} onClick={() => setCreating(!creating)}><Plus size={17} /> Create organization</button>}
     </div>
     {loading && <p role="status">Loading your organizations…</p>}
-    {error && <div className="error-box" role="alert">{error}<button className="button secondary" disabled={busy} onClick={changed}>Try again</button>{returningTo && <a className="button secondary" href={workspaceConfig.appOrigin}>Your organizations</a>}</div>}
+    {error && <div className="error-box" role="alert">{error}<button className="button secondary" disabled={busy} onClick={changed}>Try again</button>{returningTo && <a className="button secondary" href={directoryUrl}>Your organizations</a>}</div>}
     {returningTo && !error && <p role="status">Opening your organization workspace…</p>}
     {!returningTo && (creating || (!loading && !error && organizations.length === 0 && invitations.length === 0)) && <form className="panel workflow-form organization-create" onSubmit={create}>
       <h2>Create your organization</h2><p className="form-note">Give your team its own workspace address. Only members you invite can access its documents.</p>

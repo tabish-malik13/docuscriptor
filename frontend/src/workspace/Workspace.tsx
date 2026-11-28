@@ -15,7 +15,7 @@ import { actions, readView, views, supportedView, type View } from './navigation
 import { templates as starters, savedTemplate, type SavedTemplate, type Template } from './starter-templates'
 import { roleLabels, useTenantApi } from './TenantContext'
 import { TenantAccessPage } from './TenantAccessPage'
-import { workspaceConfig } from './organization-location'
+import { directoryUrl } from './organization-location'
 import { TemplatesPage } from './TemplatesPage'
 
 type Dialog = 'search' | 'notifications' | 'new'
@@ -142,7 +142,7 @@ export function Workspace({ identity: user }: { identity: Identity }) {
           <div className="nav-group"><span className="label">LIBRARY</span>{(['templates', 'activity'] as const).filter(supportedView).map(nav)}{canAdmin && nav('team')}</div>
         </nav>
         <div className="sidebar-bottom">
-          <a className="nav-item" href={workspaceConfig.appOrigin}>Your organizations</a>
+          <a className="nav-item" href={directoryUrl}>Your organizations</a>
           <button className="nav-item help-link" onClick={() => go('account')}><CircleHelp size={18} strokeWidth={1.8} /> Workspace access</button>
           <button className="account-chip" onClick={() => go('account')}><span className="avatar">{initials}</span>
             <span><strong>{identity.name}</strong><small>{identity.role}</small></span><ChevronRight size={15} className="account-chevron" />

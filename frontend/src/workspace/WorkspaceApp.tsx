@@ -1,8 +1,9 @@
+import './workspace.css'
 import { useEffect, useState } from 'react'
 import { SignInPage } from '../auth/SignInPage'
 import { authConfigured, currentIdentity, watchSignOut, type Identity } from '../auth/supabase-auth'
 import { finishWorkspaceSignIn, startWorkspaceSignIn } from '../auth/workspace-sign-in'
-import { currentOrganizationSlug, organizationAddressError, workspaceConfig } from './organization-location'
+import { currentOrganizationSlug, organizationAddressError, directoryUrl, workspaceConfig } from './organization-location'
 import { OrganizationShell } from './TenantShell'
 
 export function WorkspaceApp() {
@@ -26,6 +27,6 @@ export function WorkspaceApp() {
     return () => { active = false; unwatch() }
   }, [])
 
-  if (organizationAddressError) return <main className="organization-directory"><h1>Workspace unavailable</h1><p role="alert">{organizationAddressError}</p><a href={workspaceConfig.appOrigin}>Your organizations</a></main>
-  return identity ? <OrganizationShell key={identity.id} identity={identity} /> : <><SignInPage loading={loading} unavailable={unavailable} onSignIn={setIdentity} />{error && <div className="workspace-auth-error" role="alert"><p>{error}</p><a className="button secondary" href={workspaceConfig.appOrigin}>Return to organizations</a></div>}</>
+  if (organizationAddressError) return <main className="organization-directory"><h1>Workspace unavailable</h1><p role="alert">{organizationAddressError}</p><a href={directoryUrl}>Your organizations</a></main>
+  return identity ? <OrganizationShell key={identity.id} identity={identity} /> : <><SignInPage loading={loading} unavailable={unavailable} onSignIn={setIdentity} />{error && <div className="workspace-auth-error" role="alert"><p>{error}</p><a className="button secondary" href={directoryUrl}>Return to organizations</a></div>}</>
 }

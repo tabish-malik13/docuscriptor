@@ -91,7 +91,7 @@ export function DocxEditorPage() {
 
   return <main className="local-editor">
     <header className="editor-topbar">
-      <a href="/" className="back-link"><ArrowLeft size={16} /> Workspace</a>
+      <a href="/?view=workspace" className="back-link"><ArrowLeft size={16} /> Workspace</a>
       <div><h1>DOCX editor</h1><p>Open, edit, and download Word files in your browser.</p></div>
       <div className="heading-actions">
         <button className="button secondary" onClick={blank} disabled={busy}><FilePlus2 size={16} /> New blank</button>
